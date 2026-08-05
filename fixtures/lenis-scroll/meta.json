@@ -1,0 +1,19 @@
+{
+  "kind": "static",
+  "title": "Lenis smooth scroll + ScrollTrigger",
+  "effect": [
+    "sticky-stack"
+  ],
+  "technique": [
+    "gsap-scrolltrigger",
+    "lenis"
+  ],
+  "trigger": "scroll",
+  "surface": "page",
+  "weight": "heavy",
+  "source": "demo",
+  "sourceUrl": null,
+  "license": "own",
+  "addedAt": "2026-08-05",
+  "usedIn": []
+}

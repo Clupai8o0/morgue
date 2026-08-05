@@ -1,0 +1,14 @@
+{
+  "title": "WebGL displacement plane",
+  "kind": "static",
+  "effect": ["morph"],
+  "technique": ["webgl-shader", "threejs"],
+  "trigger": "load",
+  "surface": "hero",
+  "weight": "heavy",
+  "source": "demo",
+  "sourceUrl": null,
+  "license": "own",
+  "addedAt": "2026-08-05",
+  "usedIn": []
+}

@@ -1,0 +1,16 @@
+<meta charset="utf-8" />
+<title>React + motion</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box }
+  body { background:#0b0b0d; color:#f2f2f0; height:100vh; display:grid; place-items:center;
+         font:400 16px/1.4 -apple-system,system-ui,sans-serif; overflow:hidden }
+  .stage { display:grid; gap:2.5rem; place-items:center }
+  .stack { display:flex; gap:10px; width:min(70vw,680px); height:190px }
+  .row { position:relative; flex:1; background:#16161c; border:1px solid rgba(242,242,240,.1);
+         border-radius:8px; display:grid; place-items:center; cursor:pointer; color:inherit; font:inherit }
+  .lbl { font-size:11px; letter-spacing:.22em; text-transform:uppercase; opacity:.8 }
+  .dot { position:absolute; bottom:16px; width:7px; height:7px; border-radius:50%; background:#f2f2f0 }
+  .cap { font-size:11px; letter-spacing:.3em; text-transform:uppercase }
+</style>
+<div id="root"></div>
+<script src="./bundle.js"></script>

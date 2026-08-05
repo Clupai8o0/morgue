@@ -1,0 +1,47 @@
+<meta charset="utf-8" />
+<title>Lenis smooth scroll + ScrollTrigger</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0b0d; color: #f2f2f0; font: 400 16px/1.4 -apple-system, system-ui, sans-serif; }
+  section { min-height: 96vh; display: grid; place-items: center; }
+  .card { width: min(64vw, 640px); padding: 4rem 3rem; background: #16161c; border-radius: 10px; }
+  h2 { font-size: clamp(30px, 4.4vw, 58px); letter-spacing: -.03em; font-weight: 500; line-height: 1 }
+  .n { font-size: 11px; letter-spacing: .3em; opacity: .4; margin-bottom: 1.4rem }
+  .bar { position: fixed; top: 0; left: 0; height: 3px; background: #f2f2f0; width: 0; z-index: 9 }
+</style>
+
+<div class="bar"></div>
+<section><div class="card"><div class="n">01</div><h2>Lenis drives scroll</h2></div></section>
+<section><div class="card"><div class="n">02</div><h2>ScrollTrigger follows</h2></div></section>
+<section><div class="card"><div class="n">03</div><h2>rAF loop, not native</h2></div></section>
+<section><div class="card"><div class="n">04</div><h2>End</h2></div></section>
+
+<script src="/vendor/gsap.min.js"></script>
+<script src="/vendor/ScrollTrigger.min.js"></script>
+<script type="module">
+  import Lenis from '/lenis/lenis.mjs'
+  gsap.registerPlugin(ScrollTrigger)
+
+  const lenis = new Lenis({ duration: 1.1 })
+  window.lenis = lenis
+
+  // The canonical CodeGrid/Awwwards wiring: Lenis is ticked by GSAP, and ScrollTrigger is
+  // told to update on every Lenis frame.
+  lenis.on('scroll', ScrollTrigger.update)
+  gsap.ticker.add((time) => lenis.raf(time * 1000))
+  gsap.ticker.lagSmoothing(0)
+
+  gsap.utils.toArray('.card').forEach((card) => {
+    gsap.from(card, {
+      opacity: 0, y: 70, scale: 0.95, ease: 'none',
+      scrollTrigger: { trigger: card, start: 'top 88%', end: 'top 42%', scrub: true },
+    })
+  })
+
+  gsap.to('.bar', {
+    width: '100%', ease: 'none',
+    scrollTrigger: { trigger: document.documentElement, start: 'top top', end: 'bottom bottom', scrub: true },
+  })
+
+  window.__ready = true
+</script>

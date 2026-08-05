@@ -1,0 +1,20 @@
+{
+  "title": "Next.js static export + GSAP",
+  "kind": "project",
+  "effect": [
+    "stagger"
+  ],
+  "technique": [
+    "nextjs",
+    "gsap-core",
+    "react"
+  ],
+  "trigger": "load",
+  "surface": "hero",
+  "weight": "medium",
+  "source": "demo",
+  "sourceUrl": null,
+  "license": "own",
+  "addedAt": "2026-08-05",
+  "usedIn": []
+}

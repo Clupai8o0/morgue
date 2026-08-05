@@ -1,0 +1,14 @@
+{
+  "title": "Magnetic button + fill",
+  "kind": "static",
+  "effect": ["magnetic", "mask-reveal"],
+  "technique": ["gsap-core"],
+  "trigger": "hover",
+  "surface": "button",
+  "weight": "light",
+  "source": "demo",
+  "sourceUrl": null,
+  "license": "own",
+  "addedAt": "2026-08-05",
+  "usedIn": []
+}

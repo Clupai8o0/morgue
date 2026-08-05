@@ -1,0 +1,32 @@
+{
+  "name": "morgue",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A private reference collection of UI components and web animations, with deterministic video capture.",
+  "scripts": {
+    "capture": "node bin/capture.mjs",
+    "build": "node bin/build.mjs",
+    "check": "node bin/check.mjs",
+    "serve": "node bin/serve.mjs",
+    "fixtures:build": "node bin/fixtures-build.mjs",
+    "fixtures:capture": "MORGUE_SRC=fixtures node bin/capture.mjs",
+    "fixtures:site": "MORGUE_SRC=fixtures node bin/build.mjs",
+    "fixtures:check": "MORGUE_SRC=fixtures node bin/check.mjs",
+    "test": "pnpm fixtures:build && pnpm fixtures:capture && pnpm fixtures:site && pnpm fixtures:check"
+  },
+  "dependencies": {
+    "playwright": "1.62.1",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "gsap": "^3.15.0",
+    "lenis": "^1.3.26",
+    "motion": "^12.43.0",
+    "next": "^16.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1"
+  }
+}

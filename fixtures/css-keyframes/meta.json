@@ -1,0 +1,18 @@
+{
+  "kind": "static",
+  "title": "CSS keyframe pulse",
+  "effect": [
+    "infinite-list"
+  ],
+  "technique": [
+    "css-only"
+  ],
+  "trigger": "load",
+  "surface": "hero",
+  "weight": "light",
+  "source": "demo",
+  "sourceUrl": null,
+  "license": "own",
+  "addedAt": "2026-08-05",
+  "usedIn": []
+}

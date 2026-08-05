@@ -1,0 +1,29 @@
+<meta charset="utf-8" />
+<title>Pure CSS keyframes</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0b0d; color: #f2f2f0; height: 100vh; display: grid; place-items: center;
+         font: 400 16px/1.4 -apple-system, system-ui, sans-serif; overflow: hidden; }
+  .row { display: flex; gap: 18px; align-items: flex-end; height: 160px; }
+  .bar { width: 26px; background: #f2f2f0; border-radius: 3px; animation: pulse 2s ease-in-out infinite; }
+  .bar:nth-child(2) { animation-delay: -.25s } .bar:nth-child(3) { animation-delay: -.5s }
+  .bar:nth-child(4) { animation-delay: -.75s } .bar:nth-child(5) { animation-delay: -1s }
+  .bar:nth-child(6) { animation-delay: -1.25s } .bar:nth-child(7) { animation-delay: -1.5s }
+  @keyframes pulse { 0%,100% { height: 18% } 50% { height: 100% } }
+  .ring { position: absolute; width: 320px; height: 320px; border: 1px solid rgba(242,242,240,.16);
+          border-radius: 50%; animation: spin 6s linear infinite; }
+  .ring::after { content: ''; position: absolute; top: -4px; left: 50%; width: 7px; height: 7px;
+                 background: #f2f2f0; border-radius: 50%; }
+  @keyframes spin { to { transform: rotate(360deg) } }
+  .cap { position: absolute; bottom: 12%; font-size: 11px; letter-spacing: .3em;
+         text-transform: uppercase; opacity: .3; }
+</style>
+
+<div class="ring"></div>
+<div class="row">
+  <i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i>
+  <i class="bar"></i><i class="bar"></i><i class="bar"></i>
+</div>
+<div class="cap">css only — no javascript</div>
+
+<script>window.__ready = true</script>

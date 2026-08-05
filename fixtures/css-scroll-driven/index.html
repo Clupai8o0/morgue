@@ -1,0 +1,30 @@
+<meta charset="utf-8" />
+<title>CSS scroll-driven animation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0b0d; color: #f2f2f0; font: 400 16px/1.4 -apple-system, system-ui, sans-serif; }
+
+  /* Progress bar driven by the document scroll timeline — no JS, no rAF. */
+  .progress { position: fixed; top: 0; left: 0; height: 3px; width: 100%; background: #f2f2f0;
+              transform-origin: 0 50%; z-index: 10;
+              animation: grow linear both; animation-timeline: scroll(root block); }
+  @keyframes grow { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+
+  section { min-height: 92vh; display: grid; place-items: center; border-bottom: 1px solid rgba(242,242,240,.08); }
+  .card { width: min(62vw, 620px); padding: 4rem 3rem; background: #16161c; border-radius: 10px;
+          animation: reveal linear both; animation-timeline: view(); animation-range: entry 5% cover 42%; }
+  @keyframes reveal {
+    from { opacity: 0; transform: translateY(64px) scale(.94) }
+    to   { opacity: 1; transform: translateY(0)    scale(1)   }
+  }
+  h2 { font-size: clamp(30px, 4.4vw, 60px); letter-spacing: -.03em; font-weight: 500; line-height: 1 }
+  .n { font-size: 11px; letter-spacing: .3em; opacity: .4; margin-bottom: 1.4rem }
+</style>
+
+<div class="progress"></div>
+<section><div class="card"><div class="n">01</div><h2>scroll() timeline</h2></div></section>
+<section><div class="card"><div class="n">02</div><h2>view() timeline</h2></div></section>
+<section><div class="card"><div class="n">03</div><h2>no javascript</h2></div></section>
+<section><div class="card"><div class="n">04</div><h2>no raf</h2></div></section>
+
+<script>window.__ready = true</script>

@@ -1,0 +1,65 @@
+<meta charset="utf-8" />
+<title>Pinned horizontal scroll</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0b0d; color: #f2f2f0; font: 400 16px/1.4 -apple-system, system-ui, sans-serif; }
+  .spacer { height: 60vh; display: grid; place-items: center; letter-spacing: .3em; text-transform: uppercase; font-size: 11px; opacity: .35; }
+  .rail { height: 100vh; overflow: hidden; }
+  .track { display: flex; height: 100%; width: max-content; }
+  .panel { width: 78vw; height: 100%; padding: 8vh 4vw; display: flex; flex-direction: column; justify-content: flex-end; border-right: 1px solid rgba(255,255,255,.08); }
+  .panel h2 { font-size: clamp(38px, 7vw, 104px); line-height: .92; font-weight: 500; letter-spacing: -.04em; }
+  .panel .idx { font-size: 11px; letter-spacing: .3em; opacity: .4; margin-bottom: 2rem; }
+  .panel .bar { height: 2px; background: #f2f2f0; margin-top: 2.5rem; transform-origin: left; transform: scaleX(0); }
+  .p1 { background: #0b0b0d; } .p2 { background: #131318; } .p3 { background: #1b1b22; } .p4 { background: #24242d; }
+</style>
+
+<div class="spacer">scroll</div>
+
+<div class="rail">
+  <div class="track">
+    <section class="panel p1"><div class="idx">01 — origin</div><h2>Pinned<br />horizontal</h2><div class="bar"></div></section>
+    <section class="panel p2"><div class="idx">02 — scrub</div><h2>Driven by<br />scroll</h2><div class="bar"></div></section>
+    <section class="panel p3"><div class="idx">03 — pin</div><h2>Not by<br />time</h2><div class="bar"></div></section>
+    <section class="panel p4"><div class="idx">04 — end</div><h2>Release</h2><div class="bar"></div></section>
+  </div>
+</div>
+
+<div class="spacer">end</div>
+
+<script src="/vendor/gsap.min.js"></script>
+<script src="/vendor/ScrollTrigger.min.js"></script>
+<script>
+  gsap.registerPlugin(ScrollTrigger);
+
+  const track = document.querySelector('.track');
+  const panels = gsap.utils.toArray('.panel');
+
+  const scrollTween = gsap.to(track, {
+    x: () => -(track.scrollWidth - window.innerWidth),
+    ease: 'none',
+    scrollTrigger: {
+      trigger: '.rail',
+      pin: true,
+      scrub: 1,
+      end: () => '+=' + (track.scrollWidth - window.innerWidth),
+      invalidateOnRefresh: true,
+    },
+  });
+
+  panels.forEach((panel) => {
+    gsap.to(panel.querySelector('.bar'), {
+      scaleX: 1,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: panel,
+        containerAnimation: scrollTween,
+        start: 'left 80%',
+        end: 'left 30%',
+        scrub: true,
+      },
+    });
+  });
+
+  // Signal to the capture harness that layout has settled.
+  window.__ready = true;
+</script>

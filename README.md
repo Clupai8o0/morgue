@@ -1,0 +1,136 @@
+# morgue
+
+A private reference collection of UI components and web animations.
+
+A *morgue file* is what art departments have always called the drawer of clippings kept for
+reference — the things you look at again when you're trying to work out how something was
+done. This is that, for motion on the web.
+
+You hand it a component. It captures a deterministic video preview, files it under a
+controlled vocabulary, and writes down how the effect actually works. Later you search for
+"the one where the panels pin and scroll sideways" and get the clip, the code, and the note.
+
+**The collection is not in this repo.** `items/` is gitignored — see [What's tracked](#whats-tracked).
+
+---
+
+## Why it is built this way
+
+Every serious component gallery converges on the same rule: **the browse grid never runs code.**
+21st.dev serves 400 lazy `<img>` for 1152 components with zero iframes; Aceternity's index is
+486 static WebP with zero canvas; Codrops links out to a standalone page rather than embedding.
+
+That isn't taste, it's a hard ceiling. Measured in Chrome on this machine:
+
+- Creating 40 WebGL contexts leaves **exactly 16 alive**. The rest are force-lost.
+- Removing a canvas from the DOM does **not** free its context — still 16 alive after detaching all of them.
+- The cap is per *renderer thread*, so same-origin iframes share one budget rather than each getting their own.
+
+So a grid of live Three.js scenes doesn't degrade gracefully, it silently blanks whichever
+preview you're looking at. Hence three tiers:
+
+| Tier | What it shows | Cost |
+|---|---|---|
+| **Grid** | poster image, video on hover | ~30–90 KB per item |
+| **Detail** | the real thing, one live iframe | one item at a time |
+| **Scroll-driven** | video only — open the standalone page for the real thing | zero embed |
+
+That last row is not a preference. A ScrollTrigger item in a short embedded iframe is
+**measurably broken**: its scroller is the iframe's own viewport, so scrolling the parent
+3000px leaves the track transform at exactly `0`. Verified, not assumed.
+
+## Deterministic capture
+
+Previews are not screen recordings. The harness fakes the page clock before any script runs,
+then steps it one frame at a time:
+
+```js
+performance.now = () => now
+Date.now        = () => epoch + now
+requestAnimationFrame = (cb) => queue.set(id++, cb)   // drains only when we step it
+```
+
+GSAP, a raw rAF loop, `THREE.Clock`, Lenis and motion all read from those, so every one of
+them advances in lockstep with the frame counter. CSS/WAAPI animations live on the compositor
+instead and get an explicit seek — except those on a `ScrollTimeline`/`ViewTimeline`, which are
+driven by scroll position and must be left alone.
+
+Result: **1113/1113 frames byte-identical across two runs of all eight fixtures.** Captures are
+diffable, so a preview that rots is detectable.
+
+## Verified across the stacks worth collecting
+
+| Stack | Status |
+|---|---|
+| Plain HTML + CSS `@keyframes` | ✅ |
+| CSS scroll-driven (`scroll()` / `view()`) | ✅ |
+| GSAP core — hover / pointer | ✅ |
+| GSAP ScrollTrigger — pin + scrub | ✅ |
+| GSAP + Lenis smooth scroll | ✅ |
+| React 19 + motion | ✅ |
+| Three.js / WebGL | ✅ real GPU headless (`ANGLE Metal`) |
+| Next.js `output: 'export'` | ✅ captures post-hydration |
+
+Each of these is a fixture in `fixtures/`, and `pnpm test` runs the whole corpus end to end.
+
+---
+
+## Usage
+
+```bash
+pnpm install
+
+pnpm capture            # capture every item in items/
+pnpm capture <slug>     # just one
+pnpm build              # generate site/ — static grid, no framework
+pnpm check              # confirm every item page actually runs in the built site
+pnpm serve              # http://localhost:8910 (binds 0.0.0.0 for phone/iPad)
+
+pnpm test               # build + capture + site + check, against fixtures/
+```
+
+### Adding an item
+
+Create a folder under `items/<slug>/` with `index.html`, `meta.json`, `capture.json` and
+`notes.md`, then run `pnpm capture <slug> && pnpm build`. The contract is in
+[CLAUDE.md](./CLAUDE.md) — an agent can ingest by writing files, no API needed.
+
+`capture.json` drives the recording. There is no universal recipe, which is the point:
+
+```jsonc
+{
+  "trigger": "scroll",              // load | scroll | pointer
+  "viewport": { "width": 1280, "height": 800 },
+  "durationMs": 5000,
+  "fps": 30,
+  "scroll": { "from": 0, "to": "max", "ease": "inOut" },
+  "posterAt": 0.55,                 // stepped through, never jumped to
+  "settleMs": 600
+}
+```
+
+If automation fights you, drop your own `poster.png` / `preview.mp4` into the item folder.
+Eight seconds with Cmd-Shift-5 beats forty minutes of arguing with a headless browser.
+
+---
+
+## What's tracked
+
+**Tracked:** the tool, and `fixtures/` — eight items written from scratch for this repo, which
+double as the test suite.
+
+**Not tracked:** `items/`, `out/`, `site/`.
+
+Two reasons, both deliberate:
+
+1. **Licensing.** The collection is third-party source — paid templates, ripped components,
+   code licensed for personal reference but not redistribution. Committing it would republish
+   someone else's work under this repo's name.
+2. **Size.** Eight fixtures alone produce 46 MB of capture output. A real collection of a few
+   hundred items, with textures, `.glb` models and video, runs to gigabytes.
+
+The tool is the shareable part. The morgue is yours alone.
+
+> `meta.json` carries a `license` field per item. Anything marked `paid` should never be lifted
+> into client work without checking the original EULA — record it at ingest, while you still
+> remember where it came from.

@@ -1,0 +1,17 @@
+{
+  "trigger": "pointer",
+  "viewport": { "width": 900, "height": 640 },
+  "deviceScaleFactor": 2,
+  "durationMs": 4000,
+  "fps": 30,
+  "pointerPath": [
+    { "at": 0.0,  "x": 60,  "y": 600 },
+    { "at": 0.22, "x": 450, "y": 320 },
+    { "at": 0.42, "x": 530, "y": 260 },
+    { "at": 0.62, "x": 380, "y": 380 },
+    { "at": 0.80, "x": 450, "y": 320 },
+    { "at": 1.0,  "x": 860, "y": 60  }
+  ],
+  "posterAt": 0.45,
+  "settleMs": 400
+}

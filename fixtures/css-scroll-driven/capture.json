@@ -1,0 +1,16 @@
+{
+  "trigger": "scroll",
+  "viewport": {
+    "width": 1100,
+    "height": 720
+  },
+  "durationMs": 5000,
+  "fps": 30,
+  "scroll": {
+    "from": 0,
+    "to": "max",
+    "ease": "inOut"
+  },
+  "posterAt": 0.4,
+  "settleMs": 400
+}

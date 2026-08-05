@@ -1,0 +1,20 @@
+{
+  "kind": "static",
+  "title": "CSS scroll-driven reveals",
+  "effect": [
+    "mask-reveal",
+    "parallax"
+  ],
+  "technique": [
+    "css-only",
+    "scroll-timeline"
+  ],
+  "trigger": "scroll",
+  "surface": "page",
+  "weight": "light",
+  "source": "demo",
+  "sourceUrl": null,
+  "license": "own",
+  "addedAt": "2026-08-05",
+  "usedIn": []
+}

@@ -1,0 +1,62 @@
+<meta charset="utf-8" />
+<title>WebGL displacement plane</title>
+<style>
+  * { margin: 0; padding: 0; }
+  body { background: #07070a; overflow: hidden; }
+  canvas { display: block; }
+</style>
+
+<script type="importmap">{ "imports": { "three": "/three/three.module.js" } }</script>
+<script type="module">
+  import * as THREE from 'three'
+
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100)
+  camera.position.set(0, 0, 3.2)
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true })
+  renderer.setSize(innerWidth, innerHeight)
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+  document.body.appendChild(renderer.domElement)
+
+  const uniforms = { uTime: { value: 0 } }
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    wireframe: true,
+    vertexShader: /* glsl */ `
+      uniform float uTime;
+      varying float vD;
+      void main() {
+        vec3 p = position;
+        float w = sin(p.x * 3.0 + uTime) * cos(p.y * 3.0 - uTime * 0.7);
+        p.z += w * 0.35;
+        vD = w;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      varying float vD;
+      void main() {
+        float g = smoothstep(-1.0, 1.0, vD);
+        gl_FragColor = vec4(mix(vec3(0.25), vec3(0.96), g), 1.0);
+      }`,
+  })
+
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 2.2, 60, 40), mat)
+  mesh.rotation.x = -0.55
+  scene.add(mesh)
+
+  // Deliberately uses its own clock — this is what a real ripped Three.js scene looks like,
+  // and it is exactly what a GSAP-only seek would fail to make deterministic.
+  const clock = new THREE.Clock()
+
+  function tick() {
+    uniforms.uTime.value = clock.getElapsedTime()
+    mesh.rotation.z = Math.sin(clock.getElapsedTime() * 0.3) * 0.12
+    renderer.render(scene, camera)
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+
+  window.__ready = true
+</script>

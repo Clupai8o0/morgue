@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# THE COLLECTION IS NOT TRACKED. This is deliberate and load-bearing.
+#
+# items/ holds third-party source — paid templates, ripped components, code with
+# licences that permit personal reference but not redistribution. Committing it
+# would republish someone else's work under this repo. It also holds the capture
+# media (posters, video, textures, .glb), which runs to gigabytes.
+#
+# The tool is the open part. The morgue is yours alone.
+# ─────────────────────────────────────────────────────────────────────────────
+items/*
+!items/.gitkeep
+
+# Generated media and built output — reproducible from source via `pnpm capture`.
+out/
+site/
+
+# Fixture build artefacts. The SOURCE of every fixture is committed; the built
+# output is not, so a stale export never ends up in git.
+fixtures/**/bundle.js
+fixtures/**/_next/
+fixtures/**/.next/
+fixtures/nextjs-static/index.html
+fixtures/nextjs-static/404.html
+fixtures/nextjs-static/_not-found*
+fixtures/nextjs-static/*.txt
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Scratch
+.det/
+*.log
+.DS_Store
+.env
+.env.*

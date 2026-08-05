@@ -1,0 +1,19 @@
+{
+  "kind": "project",
+  "title": "React + motion spring rows",
+  "effect": [
+    "flip-layout"
+  ],
+  "technique": [
+    "motion/framer",
+    "react"
+  ],
+  "trigger": "hover",
+  "surface": "list",
+  "weight": "medium",
+  "source": "demo",
+  "sourceUrl": null,
+  "license": "own",
+  "addedAt": "2026-08-05",
+  "usedIn": []
+}
