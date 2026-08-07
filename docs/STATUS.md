@@ -10,21 +10,35 @@ The session snapshot this was reconciled against is [HANDOFF.md](./HANDOFF.md).
 
 ## The collection
 
-Three items, all third-party paid templates, ingested 2026-08-06. Nothing is committed —
-`items/`, `out/` and `site/` are gitignored by design, so **these exist only on this disk and
-there is no backup.**
+Seven items off four sources, all third-party paid templates. The first three were
+ingested 2026-08-06; the four `blunt-main` cards were derived 2026-08-07 once shared
+archives existed. Nothing here is committed — `items/`, `out/`, `site/` and `archives/`
+are gitignored by design, so **these exist only on this disk and there is no backup.**
 
-| slug | kind | licence | on disk | preview |
+| slug | kind | archive | on disk | preview |
 |---|---|---|---|---|
-| `livespot360-reveal` | `static` | paid (CodeGrid) | 35 MB | 180 KB, 228 frames |
-| `gooey-text-reveal` | `project` | paid (CodeGrid) | 3.7 MB | 1092 KB, 240 frames |
-| `blunt-preloader` | `unextracted` | paid (CodeGrid) | 23 MB | 236 KB, 255 frames |
+| `livespot360-reveal` | `static` | — | 35 MB | 180 KB, 228 frames |
+| `blunt-preloader` | `unextracted` | — | 23 MB | 236 KB, 255 frames |
+| `gooey-text-reveal` | `project` | — | 3.7 MB | 1092 KB, 240 frames |
+| `blunt-template` | `unextracted` | template:`blunt-main` | **20 KB** | |
+| `blunt-page-transitions` | `project` | extract:`blunt-main` | **20 KB** | |
+| `blunt-physics-footer` | `unextracted` | extract:`blunt-main` | **20 KB** | |
+| `blunt-smudge-reveal` | `project` | extract:`blunt-main` | **16 KB** | |
+
+The four-figure difference is the point of `archives/`. Those last four cards share one
+46 MB copy of the template; under the old one-directory-per-item model they would have
+cost 4 × 23 MB. An archive-backed item is meta/capture/notes and nothing else.
 
 | Directory | Size |
 |---|---|
 | `items/` | 62 MB |
-| `out/` | 299 MB (includes PNG frame dirs) |
-| `site/` | 86 MB |
+| `archives/` | 46 MB (1 archive, `blunt-main`) |
+| `out/` | 429 MB (includes PNG frame dirs) |
+| `site/` | 129 MB |
+
+Prune `node_modules` and `.next` out of an archive after building it — a staging build
+leaves 435 MB behind, which inverts the entire storage argument. Only
+`archives/<name>/out` is servable.
 
 `sourceUrl` is null on all three: both Next READMEs are untouched `create-next-app`
 boilerplate, so the product URL is not recoverable from the archive. `sourceArchive` records
@@ -77,9 +91,20 @@ landing page and a private vault — then the first real ingest.
 | R2 two-bucket storage + signed URLs | `publish.mjs --dry-run`, 57 files / 2.7MB |
 | Agent export bundles + `Copy for agent` | clipboard verified; paid `static` item 16,427 chars |
 | Ingest of third-party paid templates | 3 items, `pnpm check` green 2026-08-07 |
+| Shared archives — one template, many cards | 4 cards off `blunt-main` at ~20 KB each |
+| Relations visible in the vault | template↔extract, verified in Chrome by screenshot |
+| `pnpm survey` / `pnpm extract` | 11 ranked candidates + coupling report |
 
-Commands: `pnpm test` (capture pipeline, 8/8 fixtures), `pnpm check` (3/3 items),
-`pnpm verify:web` (10/10), `pnpm web:build` — must list `ƒ Proxy (Middleware)`.
+Commands: `pnpm test` (11/11 fixtures), `pnpm check` (**6/7 items — one real failure,
+see below**), `pnpm verify:web` (10/10), `pnpm web:build` — must list
+`ƒ Proxy (Middleware)`.
+
+**`pnpm check` is not green.** `blunt-preloader`'s internal nav 404s in the built site.
+Pre-existing, and visible only since the click-through step was added — the check used to
+do one `goto` per item and never click. Cause is `assetPrefix` (rewrites `/_next/` only)
+where the archive-backed items use `basePath` (also rewrites every `<Link href>`). Resolve
+by retiring the item in favour of `blunt-template`, migrating it to `archives/`, or scoping
+the check. Full detail in [HANDOFF.md](./HANDOFF.md).
 
 Caveat on the dry-run figure: **43% of those 2.7MB is orphaned fixture media.** `build.mjs`
 never deletes from `site/`, so `site/media/` still holds 8 slugs that are no longer in
