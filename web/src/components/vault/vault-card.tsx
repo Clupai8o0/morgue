@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { claim, forget } from "@/lib/player-pool";
 import { observe } from "@/lib/in-view";
-import { tagsOf, type Facet } from "@/lib/types";
+import { relationLabel, tagsOf, type Facet } from "@/lib/types";
 
 /**
  * One grid tile: poster always, video on hover, never live code.
@@ -63,6 +63,7 @@ export function VaultCard({ facet }: { facet: Facet }) {
   };
 
   const tags = tagsOf(facet);
+  const rel = relationLabel(facet);
 
   return (
     <Link
@@ -96,6 +97,19 @@ export function VaultCard({ facet }: { facet: Facet }) {
             onPlaying={(e) => e.currentTarget.setAttribute("data-painted", "")}
             className="absolute inset-0 size-full object-cover opacity-0 transition-opacity duration-[var(--duration-fast)] data-painted:opacity-100"
           />
+        ) : null}
+
+        {/* Family, not filter chrome: a LABEL, never a control. The card root
+            is the <Link>, so a <button> or second <a> here would be nested
+            interactive content — the archive chip in vault-grid.tsx is the
+            control, and it is always present. Identical treatment to the
+            weight badge on purpose: the difference is carried by position and
+            wording, not by a second colour. Static backdrop-blur, no
+            transition — rule 8, same as the badge it mirrors. */}
+        {rel ? (
+          <span className="text-micro bg-canvas/70 px-xxs absolute top-2 left-2 max-w-[62%] truncate rounded-xs py-[3px] uppercase tracking-[0.12em] backdrop-blur-[6px]">
+            {rel}
+          </span>
         ) : null}
 
         <span className="text-micro bg-canvas/70 px-xxs absolute top-2 right-2 rounded-xs py-[3px] uppercase tracking-[0.12em] backdrop-blur-[6px]">

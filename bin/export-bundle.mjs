@@ -32,7 +32,27 @@ function provenance(item) {
   // arrive as a dated bundle with no URL anywhere inside them, so without this
   // the only honest answer six months later is "codegrid, somehow".
   if (item.sourceArchive) lines.push(`- **Ingested from:** \`${item.sourceArchive}\``)
-  lines.push(`- **In morgue as:** \`${item.slug}\`  (\`items/${item.slug}/\`)`)
+  // An archive-backed item's code is NOT in items/<slug>/ — that directory holds
+  // only meta.json, capture.json and notes.md. Saying otherwise sends the reader
+  // somewhere empty, and provenance that misdirects is worse than provenance that
+  // is terse. Name the archive, and name the family, because "which other effects
+  // came out of this same paid delivery" is the question an extract exists to
+  // answer and it cannot be reconstructed from the paste otherwise.
+  const arc = item.archive
+  if (arc?.name) {
+    lines.push(`- **In morgue as:** \`${item.slug}\`  (metadata in \`items/${item.slug}/\`)`)
+    lines.push(`- **Code lives in:** \`archives/${arc.name}/\` — a shared archive, not this item`)
+    if (arc.entry) lines.push(`- **Entry point:** \`${arc.entry}\``)
+    if (arc.route) lines.push(`- **Captured at route:** \`${arc.route}\``)
+    if (arc.role === 'extract' && item.relations?.parent)
+      lines.push(`- **Extracted from:** \`${item.relations.parent}\` (the full template)`)
+    if (arc.role === 'template' && item.relations?.children?.length)
+      lines.push(`- **Extracts taken from it:** ${item.relations.children.map((s) => `\`${s}\``).join(', ')}`)
+    if (item.relations?.siblings?.length)
+      lines.push(`- **Sibling extracts:** ${item.relations.siblings.map((s) => `\`${s}\``).join(', ')}`)
+  } else {
+    lines.push(`- **In morgue as:** \`${item.slug}\`  (\`items/${item.slug}/\`)`)
+  }
   if (item.addedAt) lines.push(`- **Collected:** ${item.addedAt}`)
   if (item.usedIn?.length) lines.push(`- **Already shipped in:** ${item.usedIn.join(', ')}`)
   return lines.join('\n')
@@ -58,11 +78,17 @@ function provenance(item) {
  * library added there (rule 3) becomes detectable here too. A vendored path is
  * how a demo references a library — the package name never appears in it.
  */
+// Only entries that actually resolve into node_modules. VENDOR is no longer
+// purely a library map — it also mounts `/archive/` → archives/, which is a
+// shared source tree, not a package. The old `?? prefix.replaceAll('/','')`
+// fallback turned that into a package called "archive" and every archive-backed
+// extract's bundle warned that its source referenced an uninstalled dependency
+// of that name. Deriving from the shape rather than excluding by name means the
+// next non-package mount is handled without anyone remembering this.
 const VENDOR_PACKAGE = Object.fromEntries(
-  Object.entries(VENDOR).map(([prefix, dir]) => [
-    prefix,
-    dir.match(/node_modules\/((?:@[^/]+\/)?[^/]+)/)?.[1] ?? prefix.replaceAll('/', ''),
-  ]),
+  Object.entries(VENDOR)
+    .map(([prefix, dir]) => [prefix, dir.match(/node_modules\/((?:@[^/]+\/)?[^/]+)/)?.[1]])
+    .filter(([, pkg]) => pkg),
 )
 
 /**

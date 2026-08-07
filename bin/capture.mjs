@@ -16,30 +16,54 @@ import { existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { VENDOR, resolveVendor } from './vendor.mjs'
+import { VENDOR, resolveVendor, archiveMount, archiveEntry } from './vendor.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // `items/` is the private collection and is gitignored. `fixtures/` is our own test corpus
 // and is committed. Same pipeline, different corpus.
 const SRC = process.env.MORGUE_SRC || 'items'
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json' }
+const MIME = {
+  '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
+  '.json': 'application/json', '.txt': 'text/plain', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+  '.avif': 'image/avif', '.woff': 'font/woff', '.woff2': 'font/woff2', '.mp4': 'video/mp4',
+}
 
-function serve(itemDir, slug) {
+// A Next static export emits `about.html`, but `<Link href="/about">` navigates to the
+// extension-less URL. Without this, every internal link inside an archive 404s — which is
+// the whole failure mode `pnpm check`'s click-through step was added to catch.
+async function readAny(file) {
+  const candidates = path.extname(file)
+    ? [file]
+    : [file, file + '.html', path.join(file, 'index.html')]
+  for (const c of candidates) {
+    try { return { body: await readFile(c), file: c } } catch {}
+  }
+  return null
+}
+
+function serve(itemDir, slug, meta = {}) {
+  // An archive-backed item has no runnable code of its own: index.html, src/ and the
+  // built export all live in archives/<name>/, shared with every other item cut from the
+  // same template. resolveVendor() maps the mount, so the only thing serve() has to know
+  // is that the URL space is now bigger than itemDir.
+  const mount = meta.archive ? archiveMount(meta.archive.name) : null
   const server = createServer(async (req, res) => {
     let url = decodeURIComponent(req.url.split('?')[0])
+    // Cheap insurance. A router that re-prefixes an already-basePath'd href (Next +
+    // next-transition-router in `auto` mode does exactly this) requests
+    // /archive/<name>/archive/<name>/work. It is bounded at one extra copy, because the
+    // rendered href is always singly prefixed — so collapsing is safe, not a papering-over.
+    if (mount) while (url.startsWith(mount + mount)) url = url.slice(mount.length)
     // A Next.js static export is built with `assetPrefix: '/item/<slug>'` so its absolute
     // /_next/ URLs resolve in the built site, where items live under /item/<slug>/. Here the
     // item is served at root, so strip that prefix and one build satisfies both surfaces.
     if (url.startsWith(`/item/${slug}/`)) url = url.slice(`/item/${slug}`.length)
     if (url === '/') url = '/index.html'
-    const file = resolveVendor(url, ROOT, path) ?? path.join(itemDir, url)
-    try {
-      const body = await readFile(file)
-      res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' })
-      res.end(body)
-    } catch {
-      res.writeHead(404).end('not found')
-    }
+    const hit = await readAny(resolveVendor(url, ROOT, path) ?? path.join(itemDir, url))
+    if (!hit) return void res.writeHead(404).end('not found')
+    res.writeHead(200, { 'content-type': MIME[path.extname(hit.file)] ?? 'application/octet-stream' })
+    res.end(hit.body)
   })
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)))
 }
@@ -102,7 +126,18 @@ const DETACH_CLOCKS = () => {
   }
 }
 
-async function drivePage(page, cfg, t, tSec, scrollMax) {
+async function drivePage(page, cfg, t, tSec, scrollMax, state = {}) {
+  // The only way to reach a click-triggered effect. `pointerPath` moves the mouse and never
+  // presses, so a page transition — the effect that only exists between two routes — was
+  // simply uncapturable. Fires once, at cfg.click.at (0..1 of the timeline).
+  //
+  // Valid for SAME-DOCUMENT navigation only. A full page load destroys window.__seek along
+  // with the document, and the next evaluate() throws rather than quietly capturing frame 0.
+  // That is the intended failure: loud beats plausible.
+  if (cfg.click && !state.clicked && t >= (cfg.click.at ?? 0.1)) {
+    state.clicked = true
+    await page.evaluate((sel) => document.querySelector(sel)?.click(), cfg.click.selector)
+  }
   if (cfg.trigger === 'scroll') {
     const to = cfg.scroll?.to === 'max' ? scrollMax : (cfg.scroll?.to ?? scrollMax)
     const from = cfg.scroll?.from ?? 0
@@ -125,12 +160,17 @@ async function drivePage(page, cfg, t, tSec, scrollMax) {
 async function capture(slug, { scale = 1, only = null } = {}) {
   const itemDir = path.join(ROOT, SRC, slug)
   const cfg = JSON.parse(await readFile(path.join(itemDir, 'capture.json'), 'utf8'))
+  // meta.json is read for its optional `archive` block only. Tolerate its absence: an item
+  // mid-ingest should still be capturable before it is classified.
+  const meta = await readFile(path.join(itemDir, 'meta.json'), 'utf8')
+    .then(JSON.parse)
+    .catch(() => ({}))
   const outDir = path.join(ROOT, 'out', slug)
   const frameDir = path.join(outDir, 'frames')
   if (only !== 'poster') await rm(frameDir, { recursive: true, force: true })
   await mkdir(frameDir, { recursive: true })
 
-  const server = await serve(itemDir, slug)
+  const server = await serve(itemDir, slug, meta)
   const port = server.address().port
   const browser = await chromium.launch({
     args: [
@@ -151,7 +191,10 @@ async function capture(slug, { scale = 1, only = null } = {}) {
   page.on('pageerror', (e) => errors.push(String(e)))
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
 
-  await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' })
+  // An archive-backed item is captured at its own route inside the shared template, so four
+  // items over one archive are four different pages of one build.
+  const entry = meta.archive ? archiveEntry(meta.archive) : '/'
+  await page.goto(`http://127.0.0.1:${port}${entry}`, { waitUntil: 'load' })
   // Two traps here, both caused by our own fake clock:
   //  1. Playwright's waitForFunction polls on requestAnimationFrame by default — which we
   //     replaced with a queue that only drains when we step it. The predicate would never
@@ -171,6 +214,9 @@ async function capture(slug, { scale = 1, only = null } = {}) {
   const frames = Math.round((cfg.durationMs / 1000) * fps)
   const scrollMax = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)
   const t0 = Date.now()
+  // Carries "have we clicked yet" across frames. Per capture, so the poster pass replays the
+  // click at the same point in the timeline the video did.
+  const driveState = {}
 
   if (only === 'poster') {
     // Step THROUGH to the poster time rather than jumping. Scrub smoothing, elastic eases and
@@ -178,12 +224,12 @@ async function capture(slug, { scale = 1, only = null } = {}) {
     // but wrong, and it's wrong in a way that looks fine until you compare it to the video.
     const target = cfg.posterAt ?? 0.5
     const upto = Math.max(1, Math.round(frames * target))
-    for (let i = 0; i <= upto; i++) await drivePage(page, cfg, i / (frames - 1), i / fps, scrollMax)
+    for (let i = 0; i <= upto; i++) await drivePage(page, cfg, i / (frames - 1), i / fps, scrollMax, driveState)
     await page.screenshot({ path: path.join(outDir, 'poster.png') })
   } else {
     for (let i = 0; i < frames; i++) {
       const t = frames === 1 ? 0 : i / (frames - 1)
-      await drivePage(page, cfg, t, i / fps, scrollMax)
+      await drivePage(page, cfg, t, i / fps, scrollMax, driveState)
       await page.screenshot({ path: path.join(frameDir, String(i).padStart(5, '0') + '.png') })
     }
   }

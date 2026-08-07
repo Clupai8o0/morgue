@@ -11,6 +11,13 @@
 items/*
 !items/.gitkeep
 
+# Same reason, one level up: archives/ holds the ingested deliveries themselves —
+# whole paid templates with their source, node_modules and built export. An item
+# that lives in an archive is a few KB of JSON pointing into it, and the thing it
+# points at is exactly the third-party code items/ already refuses to track.
+archives/*
+!archives/.gitkeep
+
 # Generated media and built output — reproducible from source via `pnpm capture`.
 out/
 site/

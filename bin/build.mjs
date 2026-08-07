@@ -6,7 +6,7 @@ import { readFile, writeFile, readdir, cp, mkdir, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { VENDOR } from './vendor.mjs'
+import { VENDOR, ARCHIVE_PREFIX, archiveEntry } from './vendor.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SITE = path.join(ROOT, 'site')
@@ -32,8 +32,22 @@ for (const slug of slugs) {
   // and inlining that would bloat every record for no benefit.
   const exportFiles = {}
   if (meta.kind === 'static' || meta.kind === 'project') {
-    for (const rel of meta.export?.files ?? ['index.html']) {
-      const p = path.join(dir, rel)
+    // An archive-backed extract owns no code. items/<slug>/ holds meta.json,
+    // capture.json and notes.md and nothing else; the source lives in the shared
+    // archive, which is the whole point of not storing 23MB per effect. Resolve
+    // against that root, and honour `export.entry` — what an extract declares —
+    // as well as `export.files`.
+    //
+    // Getting this wrong is not a cosmetic bug: the bundle still renders, still
+    // looks like a successful export, and simply contains no source. Which is
+    // exactly what shipped until it was caught by reading a real bundle.
+    const srcRoot = meta.archive?.name
+      ? path.join(ROOT, 'archives', meta.archive.name)
+      : dir
+    const declared =
+      meta.export?.files ?? (meta.export?.entry ? [meta.export.entry] : ['index.html'])
+    for (const rel of declared) {
+      const p = path.join(srcRoot, rel)
       // Loudly. A declared file that silently isn't there produces a bundle
       // with no source at all — which still looks like a successful export
       // until someone pastes it and gets nothing. Caught exactly this way.
@@ -58,8 +72,142 @@ for (const slug of slugs) {
   })
 }
 
+// ─── Relations ─────────────────────────────────────────────────────────────
+// DERIVED, never authored. meta.json states one local fact and nothing else —
+// "I am the template for archive X" or "I am an extract from archive X". The
+// graph between items falls out of grouping by archive name, so no meta.json
+// ever contains another item's slug and a rename or a deletion cannot leave a
+// dangling pointer behind: the next build simply stops emitting one.
+//
+// Three shapes are legal and all three are produced here without a special
+// case, because they are just what the grouping happens to contain:
+//   · an archive with no role:"template" item  → every extract has parent null
+//   · a template nobody has extracted from yet → children []
+//   · an item with no archive block at all     → archive null, role null
+const ARCHIVES = path.join(ROOT, 'archives')
+const ROLES = new Set(['template', 'extract'])
+
+// slug -> the validated archive block. An item is in this map only if its
+// meta.json declares an archive we are prepared to believe.
+const member = new Map()
+for (const it of items) {
+  const block = it.archive
+  if (!block) continue
+
+  const name = typeof block.name === 'string' ? block.name.trim() : ''
+  if (!name) {
+    console.warn(`  ! ${it.slug}: archive block has no "name" — no relations derived`)
+    continue
+  }
+
+  // Loudly, for the same reason the export-file check above is loud: an item
+  // pointing at an archive directory that is not there is an item with no
+  // code. Nothing else in the build fails, the card renders, the badge reads
+  // "part of <name>" — and there is nothing behind it.
+  if (!existsSync(path.join(ARCHIVES, name))) {
+    console.warn(`  ! ${it.slug}: archive "${name}" not found under archives/ — the item has no code behind it`)
+  }
+
+  const role = ROLES.has(block.role) ? block.role : null
+  if (!role) {
+    console.warn(`  ! ${it.slug}: archive.role ${JSON.stringify(block.role ?? null)} is neither "template" nor "extract" — member of "${name}" with no parent and no children`)
+  }
+  member.set(it.slug, { name, role, route: block.route ?? null })
+}
+
+// Group. Sorted so the build output is byte-stable across filesystems: readdir
+// order is not guaranteed, and a facets.json that reshuffles every build makes
+// every diff and every cache key noise.
+const byArchive = new Map()
+for (const [slug, { name, role }] of member) {
+  let g = byArchive.get(name)
+  if (!g) byArchive.set(name, (g = { templates: [], extracts: [] }))
+  if (role === 'template') g.templates.push(slug)
+  else if (role === 'extract') g.extracts.push(slug)
+}
+for (const [name, g] of byArchive) {
+  g.templates.sort()
+  g.extracts.sort()
+  if (g.templates.length > 1) {
+    // Not fatal, but it makes "the template" a lie. Pick deterministically and
+    // say which one won, so the card labels stay derived from real pointers
+    // rather than from an assumption of uniqueness.
+    console.warn(`  ! archive "${name}": ${g.templates.length} items claim role "template" (${g.templates.join(', ')}) — using ${g.templates[0]} as the parent`)
+  }
+}
+
+const NO_RELATIONS = { archive: null, role: null, parent: null, children: [], siblings: [] }
+for (const it of items) {
+  const m = member.get(it.slug)
+  if (!m) {
+    it.relations = { ...NO_RELATIONS }
+    continue
+  }
+  const g = byArchive.get(m.name)
+  it.relations = {
+    archive: m.name,
+    role: m.role,
+    // Non-null only on an extract, so "has a parent" and "is an extract" are
+    // the same question everywhere downstream.
+    parent: m.role === 'extract' ? (g.templates[0] ?? null) : null,
+    children: m.role === 'template' ? [...g.extracts] : [],
+    siblings: m.role === 'extract' ? g.extracts.filter((s) => s !== it.slug) : [],
+  }
+
+  // An archive-backed item has no items/<slug>/index.html to link to — its page
+  // is a route inside the shared template. Same condition capture.mjs uses
+  // (`meta.archive ? archiveEntry(...) : '/'`) and the same function, which is
+  // what bin/vendor.mjs means by "capture's goto, build's href and check's
+  // navigation cannot drift apart". Relative, like every other href here, so
+  // the static grid resolves it against site/.
+  it.href = archiveEntry({ name: m.name, route: m.route }).replace(/^\//, '')
+}
+
+// What a card is allowed to claim about its family, counted off this record's
+// OWN pointers rather than off the size of the group. That distinction is the
+// whole reason the label stays truthful when an archive has two templates.
+const relatedCount = (r) =>
+  r.role === 'template' ? r.children.length : r.role === 'extract' ? r.siblings.length + (r.parent ? 1 : 0) : 0
+
 for (const [prefix, dir] of Object.entries(VENDOR)) {
-  await cp(path.join(ROOT, dir), path.join(SITE, prefix.replaceAll('/', '')), { recursive: true, force: true })
+  const from = path.join(ROOT, dir)
+  const to = path.join(SITE, prefix.replaceAll('/', ''))
+
+  // `/archive/` cannot ride the plain copy, and the reason is worth spelling
+  // out because the plain copy *looks* like it works.
+  //
+  // resolveVendor() maps /archive/<name>/work → archives/<name>/out/work. So
+  // the built site has to publish archives/<name>/out AS site/archive/<name>.
+  // `cp(archives → site/archive)` gets that wrong twice over:
+  //   1. every URL gains an /out/ segment, so every archive-backed item 404s
+  //      on its own page while capture stays green — rule 3's failure exactly;
+  //   2. it copies the WHOLE delivery — src/, node_modules/, the paid template
+  //      itself — into site/, and publish.mjs uploads site/ wholesale. The
+  //      `out` splice exists precisely so src/ is never served; a blind copy
+  //      re-introduces it one layer down, as a redistribution.
+  //
+  // Only archives an item actually names are published. An unreferenced
+  // directory under archives/ is someone's working copy, not vault content.
+  if (prefix === ARCHIVE_PREFIX) {
+    for (const name of [...byArchive.keys()].sort()) {
+      const built = path.join(from, name, 'out')
+      if (!existsSync(built)) {
+        console.warn(`  ! archive "${name}": no out/ — ${prefix}${name}/ will 404 in the built site. Build the archive's static export first.`)
+        continue
+      }
+      await cp(built, path.join(to, name), { recursive: true, force: true })
+    }
+    continue
+  }
+
+  // A vendored library directory missing means node_modules is not installed.
+  // Warn rather than throw, so one absent dependency does not turn every build
+  // into a stack trace with no mention of which entry caused it.
+  if (!existsSync(from)) {
+    console.warn(`  ! vendor "${prefix}" → ${dir}/ does not exist — nothing copied to site/${prefix.replaceAll('/', '')}/`)
+    continue
+  }
+  await cp(from, to, { recursive: true, force: true })
 }
 await writeFile(path.join(SITE, 'items.json'), JSON.stringify(items, null, 2))
 await writeFile(path.join(SITE, 'index.html'), await readFile(path.join(ROOT, 'bin', 'grid.html'), 'utf8'))
@@ -93,6 +241,19 @@ const facets = items.map((it) => ({
   weight: it.weight,
   kind: it.kind,
   hasVideo: Boolean(it.video),
+  // Three fields so a card can label and filter its family without fetching a
+  // single record. Read off `relations`, never off meta.archive, so the facet
+  // row and the record are incapable of disagreeing.
+  //
+  // Omitted entirely when the item has no archive, which is most of them: the
+  // budget above is ~130 bytes an item and `"archive":null,"role":null,
+  // "relatedCount":0` is another 42 on every row that would never use them.
+  // Consumers must already treat all three as optional — facets.json is
+  // R2-resident and versions independently of the deployed app, so "field
+  // absent" is a permanent state, not a migration.
+  ...(it.relations.archive
+    ? { archive: it.relations.archive, role: it.relations.role, relatedCount: relatedCount(it.relations) }
+    : {}),
 }))
 await writeFile(path.join(DATA, 'facets.json'), JSON.stringify(facets))
 

@@ -16,6 +16,11 @@
   .facets { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:28px; }
   .facet { font-size:11px; letter-spacing:.08em; padding:5px 10px; border:1px solid var(--line); border-radius:100px;
            color:var(--dim); cursor:pointer; background:none; font-family:inherit; }
+  /* Archive chips lead the row and sit one step brighter than a tag, because
+     they scope to a family rather than to a property. Declared BEFORE the
+     pressed rule on purpose: equal specificity, so source order decides, and
+     the pressed state must win or a selected archive renders fg-on-fg. */
+  .facet.arc { color:var(--fg); border-color:rgba(242,242,240,.28); }
   .facet[aria-pressed="true"] { color:var(--bg); background:var(--fg); border-color:var(--fg); }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:20px; }
   .card { position:relative; display:block; text-decoration:none; color:inherit; }
@@ -29,6 +34,12 @@
   .tags { color:var(--dim); font-size:11px; letter-spacing:.06em; text-align:right; }
   .badge { position:absolute; top:8px; right:8px; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
            padding:3px 7px; border-radius:3px; background:rgba(11,11,13,.72); backdrop-filter:blur(6px); color:var(--fg); }
+  /* Same treatment as .badge, opposite corner — the family label is a LABEL,
+     never a control; the archive chip above is the control. Static blur and no
+     transition, like .badge: up to twelve videos may be decoding behind it. */
+  .rel { position:absolute; top:8px; left:8px; max-width:62%; overflow:hidden; text-overflow:ellipsis;
+         white-space:nowrap; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+         padding:3px 7px; border-radius:3px; background:rgba(11,11,13,.72); backdrop-filter:blur(6px); color:var(--fg); }
   .empty { color:var(--dim); padding:40px 0; }
 </style>
 
@@ -69,13 +80,36 @@ const io = new IntersectionObserver((entries) => {
 
 const tagsOf = (it) => [...(it.effect ?? []), ...(it.technique ?? []), it.trigger, it.surface].filter(Boolean)
 
+// Mirrors relationLabel() in web/src/lib/types.ts. Two copies on purpose: this
+// file has no build step and cannot import TypeScript — the same trade-off the
+// player LRU above already makes with lib/player-pool.ts. Keep them in step; a
+// divergence shows up as two different badge texts for the same item.
+// Guarded throughout: a stale items.json predating relations is a real state.
+const relOf = (it) => {
+  const r = it.relations
+  if (!r || !r.archive) return ''
+  if (r.role === 'template') {
+    const n = (r.children ?? []).length
+    return n ? `${n} extract${n === 1 ? '' : 's'}` : 'template'
+  }
+  if (r.role === 'extract') return `part of ${r.archive}`
+  return ''
+}
+
+// tagsOf stays the DISPLAY list; keysOf is what the filter matches. The
+// namespaced archive key rides the existing `active` Set rather than growing a
+// second filtering system — and must never leak into .tags on a card.
+const keysOf = (it) => (it.relations?.archive ? [...tagsOf(it), `archive:${it.relations.archive}`] : tagsOf(it))
+
 function card(it) {
   const a = document.createElement('a')
   a.className = 'card'; a.href = it.href; a.target = '_blank'; a.rel = 'noopener'
+  const rel = relOf(it)
   a.innerHTML = `
     <div class="frame">
       <img src="${it.poster}" alt="" loading="lazy" decoding="async" />
       ${it.video ? `<video muted loop playsinline preload="metadata" data-src="${it.video}"></video>` : ''}
+      ${rel ? `<span class="rel">${rel}</span>` : ''}
       <span class="badge">${it.weight}</span>
     </div>
     <div class="meta">
@@ -100,9 +134,12 @@ function card(it) {
 function render() {
   const q = document.getElementById('q').value.toLowerCase().trim()
   const shown = items.filter((it) => {
-    if (active.size && !tagsOf(it).some((t) => active.has(t))) return false
+    if (active.size && !keysOf(it).some((t) => active.has(t))) return false
     if (!q) return true
-    return (it.title + ' ' + tagsOf(it).join(' ') + ' ' + (it.notes ?? '')).toLowerCase().includes(q)
+    // The archive name is in the haystack too, so typing "blunt" finds the
+    // whole family whether or not the chip is on.
+    return (it.title + ' ' + tagsOf(it).join(' ') + ' ' + (it.relations?.archive ?? '') + ' ' + (it.notes ?? ''))
+      .toLowerCase().includes(q)
   })
   loaded.splice(0).forEach(release)
   grid.replaceChildren(...shown.map(card))
@@ -110,10 +147,20 @@ function render() {
   document.getElementById('count').textContent = `${shown.length} of ${items.length}`
 }
 
+// Derived from `items`, never from the filtered result: an active filter must
+// never remove its own escape hatch. Archives lead, so a family is one click
+// from the top of the row.
+const allArchives = [...new Set(items.map((it) => it.relations?.archive).filter(Boolean))].sort()
+  .map((a) => `archive:${a}`)
 const allTags = [...new Set(items.flatMap(tagsOf))].sort()
-document.getElementById('facets').replaceChildren(...allTags.map((t) => {
+document.getElementById('facets').replaceChildren(...[...allArchives, ...allTags].map((t) => {
   const b = document.createElement('button')
-  b.className = 'facet'; b.textContent = t; b.setAttribute('aria-pressed', 'false')
+  const isArc = t.startsWith('archive:')
+  b.className = isArc ? 'facet arc' : 'facet'
+  // Labelled without the namespace, keyed with it: the prefix exists to keep
+  // an archive called "scroll" from colliding with the tag "scroll".
+  b.textContent = isArc ? t.slice('archive:'.length) : t
+  b.setAttribute('aria-pressed', 'false')
   b.onclick = () => {
     active.has(t) ? active.delete(t) : active.add(t)
     b.setAttribute('aria-pressed', String(active.has(t)))

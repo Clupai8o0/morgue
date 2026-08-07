@@ -3,6 +3,12 @@ import { notFound } from "next/navigation";
 import { getItem } from "@/lib/vault-data";
 import { tagsOf } from "@/lib/types";
 import { CopyBundle } from "@/components/vault/copy-bundle";
+import {
+  ArchiveCrumb,
+  ArchiveEntry,
+  RelationsSection,
+  getFamily,
+} from "@/components/vault/relations";
 // One formatter, shared with `pnpm export`. It lives in bin/ because the CLI
 // is plain Node ESM and cannot import TypeScript.
 import { buildBundle } from "../../../../../bin/export-bundle.mjs";
@@ -31,14 +37,22 @@ export default async function ItemPage({ params }: PageProps<"/vault/[slug]">) {
 
   const scrollDriven = item.trigger === "scroll";
 
+  // One extra read per family member, on this route only. See relations.tsx.
+  const family = await getFamily(item);
+
   return (
     <main className="mx-auto w-full max-w-[1100px] px-lg py-xxl">
-      <Link
-        href="/vault"
-        className="text-micro text-ink-muted hover:text-ink transition-colors duration-[var(--duration-fast)]"
-      >
-        ← vault
-      </Link>
+      <div className="gap-sm flex flex-wrap items-baseline">
+        <Link
+          href="/vault"
+          className="text-micro text-ink-muted hover:text-ink transition-colors duration-[var(--duration-fast)]"
+        >
+          ← vault
+        </Link>
+        {item.relations?.archive ? (
+          <ArchiveCrumb archive={item.relations.archive} />
+        ) : null}
+      </div>
 
       <header className="mt-lg mb-xl">
         <h1 className="text-display-lg font-display">{item.title}</h1>
@@ -114,8 +128,11 @@ export default async function ItemPage({ params }: PageProps<"/vault/[slug]">) {
               client work.
             </p>
           ) : null}
+          <ArchiveEntry item={item} />
         </aside>
       </div>
+
+      <RelationsSection item={item} family={family} />
     </main>
   );
 }

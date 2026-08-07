@@ -4,7 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { VaultCard } from "./vault-card";
 import { Reveal } from "@/components/motion/reveal";
 import { releaseAll } from "@/lib/player-pool";
-import { tagsOf, type Facet, type VaultIndex } from "@/lib/types";
+import {
+  archiveKey,
+  archiveNameOf,
+  keysOf,
+  tagsOf,
+  type Facet,
+  type VaultIndex,
+} from "@/lib/types";
 
 /**
  * The browse grid.
@@ -23,29 +30,61 @@ import { tagsOf, type Facet, type VaultIndex } from "@/lib/types";
 
 const CHIP_GROUPS = ["effect", "technique", "trigger", "surface"] as const;
 
+/** Archive names are directory names. Anything else in ?archive= is ignored. */
+const ARCHIVE_NAME = /^[a-z0-9][a-z0-9._-]*$/i;
+
 export function VaultGrid({
   facets,
   index,
+  initialArchive,
 }: {
   facets: Facet[];
   index: VaultIndex | null;
+  /**
+   * Seeds the archive filter from `/vault?archive=<name>` — the link the
+   * detail page's Relations section points at. When the server route forwards
+   * the search param this is authoritative; when it does not, the effect below
+   * reads it on the client instead.
+   */
+  initialArchive?: string | null;
 }) {
   const pageSize = index?.pageSize ?? 24;
 
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState<Set<string>>(new Set());
+  const [active, setActive] = useState<Set<string>>(
+    () => new Set(initialArchive ? [archiveKey(initialArchive)] : []),
+  );
   const [visible, setVisible] = useState(pageSize);
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Deep-link fallback, on mount only. Deliberately NOT in the useState
+  // initialiser: that also runs on the server, where there is no location, so
+  // seeding there would make the two render passes disagree — a hydration
+  // mismatch. Deliberately not synced back to the URL either; that would be a
+  // second filtering system with its own history semantics.
+  const seeded = useRef(initialArchive !== undefined);
+  useEffect(() => {
+    if (seeded.current) return;
+    seeded.current = true;
+    const name = new URLSearchParams(window.location.search).get("archive");
+    if (name && ARCHIVE_NAME.test(name)) setActive(new Set([archiveKey(name)]));
+  }, []);
 
   // Precompute each item's searchable haystack once rather than on every
   // keystroke — at 500 items and ~15 tags each that is the difference between
   // typing feeling instant and feeling laggy.
+  //
+  // `keys` is what the filter matches — display tags plus the namespaced
+  // `archive:<name>` token, so an archive joins the EXISTING OR predicate
+  // rather than getting a second filtering system. The archive name is in the
+  // haystack too, so typing "blunt" finds the family with no chip at all.
   const rows = useMemo(
     () =>
       facets.map((f) => ({
         facet: f,
-        tags: tagsOf(f),
-        haystack: `${f.title} ${tagsOf(f).join(" ")}`.toLowerCase(),
+        keys: keysOf(f),
+        haystack: `${f.title} ${tagsOf(f).join(" ")} ${f.archive ?? ""}`
+          .toLowerCase(),
       })),
     [facets],
   );
@@ -54,7 +93,7 @@ export function VaultGrid({
     const q = query.toLowerCase().trim();
     return rows
       .filter((r) => {
-        if (active.size && !r.tags.some((t) => active.has(t))) return false;
+        if (active.size && !r.keys.some((t) => active.has(t))) return false;
         return !q || r.haystack.includes(q);
       })
       .map((r) => r.facet);
@@ -97,6 +136,27 @@ export function VaultGrid({
     return CHIP_GROUPS.flatMap((g) => index.vocab[g] ?? []);
   }, [index]);
 
+  // Derived from `facets`, NOT from `shown`. This is the single most important
+  // line in the file for relations: an active filter must never remove its own
+  // escape hatch, which is what makes "an extract whose parent is filtered out"
+  // a recoverable state instead of a dead end. Derived here rather than from
+  // index.vocab because the count comes free and vocab cannot carry it.
+  const archives = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const f of facets) {
+      if (f.archive) counts.set(f.archive, (counts.get(f.archive) ?? 0) + 1);
+    }
+    return [...counts]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [facets]);
+
+  // With exactly one archive selected and nothing else, the count line can
+  // name the family — so "am I seeing all of it" is answerable without
+  // counting cards.
+  const soleArchive =
+    active.size === 1 ? archiveNameOf([...active][0]) : null;
+
   const page = shown.slice(0, visible);
 
   return (
@@ -113,9 +173,47 @@ export function VaultGrid({
           {shown.length === facets.length
             ? `${facets.length} items`
             : `${shown.length} of ${facets.length}`}
-          {active.size > 0 ? ` · ${active.size} filters` : ""}
+          {active.size > 0
+            ? soleArchive
+              ? ` · ${soleArchive} family`
+              : ` · ${active.size} filters`
+            : ""}
         </div>
       </div>
+
+      {/* Archives sit above the vocab chips and use the same button, the same
+          `active` set and the same toggle — visibly one chip vocabulary, not
+          two. They inherit its OR semantics: archive + tag WIDENS. */}
+      {archives.length > 0 ? (
+        <div
+          className="mb-sm gap-xxs flex flex-wrap items-center"
+          role="group"
+          aria-label="Archives"
+        >
+          <span className="text-micro text-ink-muted pr-xxs uppercase tracking-[0.12em]">
+            archives
+          </span>
+          {archives.map(({ name, count }) => {
+            const key = archiveKey(name);
+            const on = active.has(key);
+            return (
+              <button
+                key={key}
+                onClick={() => toggle(key)}
+                aria-pressed={on}
+                className={`text-micro rounded-pill border px-sm py-[5px] transition-all duration-[var(--duration-fast)] ease-[var(--ease-spring)] hover:scale-[1.04] ${
+                  on
+                    ? "bg-ink text-on-primary border-ink"
+                    : "border-hairline text-ink-muted hover:text-ink hover:border-ink-muted"
+                }`}
+              >
+                {name}{" "}
+                <span className="tabular-nums opacity-60">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {chips.length > 0 ? (
         <div className="mb-xxl gap-xxs flex flex-wrap">

@@ -22,7 +22,10 @@
     "db:studio": "pnpm --filter web db:studio",
     "publish:r2": "node bin/publish.mjs",
     "export": "node bin/export.mjs",
-    "optimise": "node bin/optimise.mjs"
+    "optimise": "node bin/optimise.mjs",
+    "survey": "node bin/survey.mjs",
+    "extract": "node bin/extract.mjs",
+    "icon": "python3 bin/icon.py"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",
