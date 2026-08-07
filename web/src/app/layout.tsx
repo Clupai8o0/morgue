@@ -2,6 +2,21 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Inter } from "next/font/google";
 import { SmoothScroll } from "@/components/motion/smooth-scroll";
+// Not optional, and not cosmetic. The rule that matters is
+// `html.lenis, html.lenis body { height: auto }`.
+//
+// <html> carries `h-full` below, so without this stylesheet the documentElement
+// border box is pinned to the viewport. Lenis recomputes its scroll limit from
+// a ResizeObserver on that box — which therefore never fires when the content
+// grows. On a hard load Lenis reads the right scrollHeight and everything
+// looks fine; on a CLIENT-SIDE navigation from a short page to a tall one it
+// keeps the old limit, and a limit of 0 means it preventDefault()s every wheel
+// event. /vault fits one viewport, so clicking any card into /vault/<slug>
+// produced a page that could not be scrolled at all.
+//
+// bin/vendor.mjs already copies this file into site/ for the static grid; the
+// React app was the one surface missing it.
+import "lenis/dist/lenis.css";
 import "./globals.css";
 
 /**
