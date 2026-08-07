@@ -1,0 +1,297 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   morgue — design tokens
+   Derived from web/DESIGN.md (getdesign "framer"). Deviations are marked.
+
+   Dark only. DESIGN.md: "There's no light mode on the marketing site;
+   the brand IS dark." No prefers-color-scheme branch anywhere in this file.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@theme {
+  /* ─── Colour ──────────────────────────────────────────────────────────
+     Verbatim from DESIGN.md. accent-blue is reserved for links, focus and
+     selection — never decorative. The chrome itself is monochrome. */
+  --color-canvas: #090909;
+  --color-surface-1: #141414;
+  --color-surface-2: #1c1c1c;
+  --color-hairline: #262626;
+  --color-hairline-soft: #1a1a1a;
+
+  --color-ink: #ffffff;
+  --color-ink-muted: #999999;
+
+  --color-primary: #ffffff;
+  --color-on-primary: #000000;
+  --color-inverse-canvas: #ffffff;
+  --color-inverse-ink: #000000;
+
+  --color-accent: #0099ff;
+  --color-success: #22c55e;
+
+  --color-grad-magenta: #d44df0;
+  --color-grad-violet: #6a4cf5;
+  --color-grad-orange: #ff7a3d;
+  --color-grad-coral: #ff5577;
+
+  /* ─── Type scale ──────────────────────────────────────────────────────
+     DEVIATION FROM DESIGN.md, deliberate, two parts:
+
+     1. Sizes are fluid. DESIGN.md specifies desktop-only pixel values
+        (110px display-xxl); rendered literally that is unusable on a phone.
+        clamp() preserves the ceiling and gives it a floor.
+
+     2. Tracking is em, not px. DESIGN.md pairs -5.5px with 110px. Keep it in
+        px and a headline that shrinks to 56px keeps -5.5px of tracking, which
+        collapses the letters into each other. -5.5/110 = -0.05em holds the
+        ratio the design intends at every size.
+
+     The body scale works out to a uniform -0.01em, which is a good sign the
+     original spec was ratio-driven and merely written down in pixels. */
+
+  --text-display-xxl: clamp(3.5rem, 9vw, 6.875rem);
+  --text-display-xxl--line-height: 0.85;
+  --text-display-xxl--letter-spacing: -0.05em;
+  --text-display-xxl--font-weight: 500;
+
+  --text-display-xl: clamp(2.75rem, 7vw, 5.3125rem);
+  --text-display-xl--line-height: 0.95;
+  --text-display-xl--letter-spacing: -0.05em;
+  --text-display-xl--font-weight: 500;
+
+  --text-display-lg: clamp(2.25rem, 5.5vw, 3.875rem);
+  --text-display-lg--line-height: 1;
+  --text-display-lg--letter-spacing: -0.05em;
+  --text-display-lg--font-weight: 500;
+
+  --text-display-md: clamp(1.5rem, 3vw, 2rem);
+  --text-display-md--line-height: 1.13;
+  --text-display-md--letter-spacing: -0.031em;
+  --text-display-md--font-weight: 500;
+
+  --text-headline: 1.375rem;
+  --text-headline--line-height: 1.2;
+  --text-headline--letter-spacing: -0.036em;
+  --text-headline--font-weight: 700;
+
+  --text-subhead: 1.5rem;
+  --text-subhead--line-height: 1.3;
+  --text-subhead--letter-spacing: 0em;
+  --text-subhead--font-weight: 400;
+
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.3;
+  --text-body-lg--letter-spacing: -0.01em;
+
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.3;
+  --text-body--letter-spacing: -0.01em;
+
+  --text-body-sm: 0.875rem;
+  --text-body-sm--line-height: 1.4;
+  --text-body-sm--letter-spacing: -0.01em;
+  --text-body-sm--font-weight: 500;
+
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.2;
+  --text-caption--letter-spacing: -0.01em;
+  --text-caption--font-weight: 500;
+
+  --text-micro: 0.75rem;
+  --text-micro--line-height: 1.2;
+  --text-micro--letter-spacing: -0.01em;
+
+  --text-button: 0.875rem;
+  --text-button--line-height: 1;
+  --text-button--letter-spacing: -0.01em;
+  --text-button--font-weight: 500;
+
+  /* ─── Radius ──────────────────────────────────────────────────────────
+     Verbatim. DESIGN.md: 15–20px default for cards, 30px for the gradient
+     atmosphere cards, 100px pills. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 15px;
+  --radius-xl: 20px;
+  --radius-xxl: 30px;
+  --radius-pill: 100px;
+
+  /* ─── Spacing ─────────────────────────────────────────────────────────
+     Verbatim, added alongside Tailwind's default numeric scale. */
+  --spacing-hair: 1px;
+  --spacing-xxs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 15px;
+  --spacing-lg: 20px;
+  --spacing-xl: 30px;
+  --spacing-xxl: 40px;
+  --spacing-section: 96px;
+
+  /* ─── Motion ──────────────────────────────────────────────────────────
+     ADDITION. DESIGN.md ships five keys — colors, typography, rounded,
+     spacing, components — and no motion whatsoever. Since motion is the
+     entire point of this site, the vocabulary is defined here so every
+     component eases the same way instead of inventing its own curve.
+
+     out-expo is the workhorse: fast departure, long settle. Reads as
+     "expensive" without being slow. spring overshoots and is reserved for
+     things that respond to the pointer (pills, magnetic targets). */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-instant: 120ms;
+  --duration-fast: 200ms;
+  --duration-base: 320ms;
+  --duration-slow: 520ms;
+  --duration-reveal: 800ms;
+}
+
+/* Font families resolve from next/font at runtime, so they need `inline`. */
+@theme inline {
+  --font-display: var(--font-general-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Gradient atmosphere panels
+
+   DESIGN.md is emphatic that these are *cards in the grid*, not section
+   backgrounds — "each one a small living poster." Composed as layered radial
+   gradients rather than the flat colour tokens so they read as light rather
+   than paint. Animating background-position is cheap; animating the gradient
+   itself is not, so the movement lives in a transform on a child layer.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@utility spotlight-violet {
+  background:
+    radial-gradient(120% 90% at 20% 15%, #8b6cff 0%, transparent 60%),
+    radial-gradient(110% 100% at 85% 80%, #d44df0 0%, transparent 55%),
+    linear-gradient(150deg, #6a4cf5 0%, #3d1f8c 100%);
+}
+
+@utility spotlight-magenta {
+  background:
+    radial-gradient(110% 85% at 75% 20%, #ff7ad9 0%, transparent 58%),
+    radial-gradient(120% 100% at 15% 85%, #6a4cf5 0%, transparent 60%),
+    linear-gradient(145deg, #d44df0 0%, #7a1f8c 100%);
+}
+
+@utility spotlight-orange {
+  background:
+    radial-gradient(115% 90% at 25% 20%, #ffb36b 0%, transparent 60%),
+    radial-gradient(110% 95% at 80% 85%, #ff5577 0%, transparent 55%),
+    linear-gradient(155deg, #ff7a3d 0%, #b32d4a 100%);
+}
+
+@utility spotlight-coral {
+  background:
+    radial-gradient(120% 85% at 70% 15%, #ff96ad 0%, transparent 58%),
+    radial-gradient(105% 100% at 20% 90%, #ff7a3d 0%, transparent 55%),
+    linear-gradient(160deg, #ff5577 0%, #8c1f3d 100%);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Base
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-canvas);
+  /* Lenis drives scrolling; native smooth would fight it. */
+  scroll-behavior: auto;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+
+  /* DESIGN.md leans hard on Inter's character variants — single-storey "a",
+     straight-leg "l", tabular figures. This is most of why the body voice
+     reads as custom-tuned rather than default-Inter. */
+  font-feature-settings: "cv01", "cv05", "cv09", "cv11", "ss03", "ss07", "dlig";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* The single chromatic accent, used exactly where DESIGN.md permits. */
+::selection {
+  background: var(--color-accent);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* Display type is set in General Sans and always tracked tight. */
+.font-display,
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Entrance reveal
+
+   A CSS transition toggled by one shared IntersectionObserver, NOT a GSAP
+   tween per element. At 500 cards, ScrollTrigger instances would each carry
+   their own start/end calculation and recalculate on every resize; this is
+   two properties and a class. The stagger is a transition-delay driven by an
+   index custom property, so it costs nothing at all.
+
+   Applied to a WRAPPER, never the card itself — the card owns `transform` for
+   its hover lift, and two rules fighting over one property is how hover
+   silently stops working.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity var(--duration-reveal) var(--ease-out-expo),
+    transform var(--duration-reveal) var(--ease-out-expo);
+  /* Capped so the last card of a 24-item page isn't held back by half a
+     second of accumulated delay. */
+  transition-delay: calc(min(var(--reveal-i, 0), 11) * 45ms);
+  will-change: opacity, transform;
+}
+
+.reveal[data-in] {
+  opacity: 1;
+  transform: none;
+  /* Released once the entrance is done — leaving will-change on 500 elements
+     pins a compositor layer for each and is worse than not using it. */
+  will-change: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Reduced motion
+
+   This site is a gallery of animation, so this matters more than usual, not
+   less. Chrome motion is suppressed entirely. Preview videos are content —
+   they keep their poster frame and only play on explicit hover, so they are
+   left alone rather than stripped.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
