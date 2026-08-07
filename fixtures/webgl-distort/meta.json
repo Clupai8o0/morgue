@@ -1,8 +1,13 @@
 {
   "title": "WebGL displacement plane",
   "kind": "static",
-  "effect": ["morph"],
-  "technique": ["webgl-shader", "threejs"],
+  "effect": [
+    "morph"
+  ],
+  "technique": [
+    "webgl-shader",
+    "threejs"
+  ],
   "trigger": "load",
   "surface": "hero",
   "weight": "heavy",
@@ -10,5 +15,19 @@
   "sourceUrl": null,
   "license": "own",
   "addedAt": "2026-08-05",
-  "usedIn": []
+  "usedIn": [],
+  "export": {
+    "files": [
+      "index.html"
+    ],
+    "deps": {
+      "three": "^0.180",
+      "gsap": "^3.13"
+    },
+    "scaffold": [
+      "body",
+      ".hint"
+    ],
+    "notes": "THREE.Clock reads performance.now() directly. Under morgue's capture harness that is faked \u2014 in your project it is real, so no change needed."
+  }
 }

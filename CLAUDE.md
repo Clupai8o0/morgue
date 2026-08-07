@@ -43,7 +43,8 @@ within a month, and then search stops working.
   "surface": "page",             // button | card | nav | hero | cursor | list | image | text | page
   "weight": "heavy",             // light | medium | heavy
   "source": "codegrid",
-  "sourceUrl": "https://…",
+  "sourceUrl": "https://…",      // product page — answers "what may I do with this"
+  "sourceArchive": "~/Downloads/…",  // the delivery it was ingested from, if any
   "license": "paid",             // own | mit | paid | unknown
   "addedAt": "2026-08-05",
   "usedIn": []                   // projects you actually shipped it in
@@ -56,6 +57,40 @@ flip-layout, infinite-list, stagger
 
 **technique** — gsap-core, gsap-scrolltrigger, css-only, scroll-timeline, webgl-shader,
 threejs, canvas2d, view-transitions, motion/framer, react, nextjs, lenis
+
+### The `export` block
+
+Optional, but it is what makes an item usable somewhere else. `pnpm export
+<slug>` and the vault's "Copy for agent" button assemble a markdown bundle from
+it — provenance, licence, dependencies, notes, source, and what to throw away.
+
+```jsonc
+"export": {
+  "files": ["index.html"],          // what to inline; default ["index.html"]
+  "deps": { "gsap": "^3.13" },      // REAL packages, not morgue's vendored copies
+  "scaffold": ["body", ".stage"],   // demo furniture — the bundle says "do not copy"
+  "notes": "Use quickTo, not gsap.to — …"   // the mistake someone will make
+}
+```
+
+**`scaffold` is the field that matters.** A demo page centres itself in a
+`100vh` grid, hides `overflow` on `body`, loads GSAP from `/vendor/`, and sets
+`window.__ready`. Pasted verbatim into another project, an agent faithfully
+reproduces all of it and the result looks plausible while being wrong. Listing
+the selectors that are furniture is the difference between a bundle that works
+and one that wastes an hour.
+
+Record `source` and `sourceUrl` honestly — provenance travels into every export,
+which is the point. Six months later, "where did this come from and what am I
+allowed to do with it" must be answerable from the paste alone.
+
+If there is no product URL, leave `sourceUrl` null and set `sourceArchive`
+instead. Do not put the local path in `sourceUrl` to make the field look filled
+in: they answer different questions, and a paid template routinely arrives as a
+dated bundle with no URL anywhere inside it — both READMEs in the July 2026
+CodeGrid drop are untouched `create-next-app` boilerplate. `sourceArchive` is a
+weaker claim than `sourceUrl` on purpose, and a weak true claim beats a
+confident wrong one.
 
 **kind** decides how much work ingestion is:
 - `reference` — video + notes + URL, no code. Fastest to add and often the most useful. Do not
@@ -109,6 +144,42 @@ React `useEffect` works.
 
 5. **`motion: OK` does not mean correct.** It proves pixels changed, not that the effect ran.
    Look at `out/<slug>/preview.mp4` before considering an item done.
+
+11. **Image optimisation never renames a file.** `pnpm optimise` re-encodes under the same name
+    and the same extension; `--format` requires `--allow-rename` and then refuses every file it
+    cannot prove safe. `blunt-preloader/src/components/HeroSpotlight/HeroSpotlight.js:23` builds
+    its paths with a template literal — `` `…/showreel_img_${i + 1}.jpg` `` — and the same
+    computed form survives minification into `_next/static/chunks/`, so for those ten files
+    there is no string to rewrite anywhere in the tree. A rename 404s after hydration, which
+    `pnpm check` cannot see: it loads one route for 1.4s. Optimise on the way into `site/`,
+    never before `pnpm capture` (the poster is encoded at dpr 2 and `preview.mp4` is the
+    archival record), and never into `items/` without `--in-place --yes --backup <dir>` — that
+    is paid source with no backup. Numbered 11 to avoid colliding with the web rules below;
+    it is an ingest rule, not a web one.
+
+## Rules for web/
+
+6. **This is `src/proxy.ts`, not `middleware.ts`.** Next 16 renamed the
+   convention. It must sit beside `app/` — with a `src/` directory that means
+   `src/proxy.ts`; at `web/proxy.ts` it is silently ignored and the auth gate
+   does not run. Verify with `pnpm web:build`: the output must list
+   `ƒ Proxy (Middleware)`. The `edge` runtime is unsupported there.
+
+7. **Run web scripts from the repo root.** `pnpm web:dev`, `pnpm web:build`.
+   Running them inside `web/` fails on `ERR_PNPM_IGNORED_BUILDS`.
+
+8. **The grid never runs code, and cards animate transform/opacity only.** No
+   `box-shadow`, `filter` or `backdrop-blur` transitions on a card — up to
+   twelve videos may be decoding and anything forcing paint competes with them.
+   The LRU in `lib/player-pool.ts` is ported verbatim from `bin/grid.html`;
+   do not "modernise" it into React state.
+
+9. **An empty `AUTH_ALLOWED_LOGINS` denies everyone.** Deliberate. A missing
+   variable in production must lock the door, not open it. Likewise an
+   unconfigured production deploy returns 503 rather than serving the vault.
+
+10. **`pnpm verify:web` after touching web/.** A green `next build` says
+    nothing about whether the page runs — the same lesson as rule 5.
 
 ## Never commit the collection
 

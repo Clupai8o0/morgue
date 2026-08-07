@@ -1,8 +1,13 @@
 {
   "title": "Magnetic button + fill",
   "kind": "static",
-  "effect": ["magnetic", "mask-reveal"],
-  "technique": ["gsap-core"],
+  "effect": [
+    "magnetic",
+    "mask-reveal"
+  ],
+  "technique": [
+    "gsap-core"
+  ],
   "trigger": "hover",
   "surface": "button",
   "weight": "light",
@@ -10,5 +15,19 @@
   "sourceUrl": null,
   "license": "own",
   "addedAt": "2026-08-05",
-  "usedIn": []
+  "usedIn": [],
+  "export": {
+    "files": [
+      "index.html"
+    ],
+    "deps": {
+      "gsap": "^3.13"
+    },
+    "scaffold": [
+      "body",
+      ".stage",
+      ".hint"
+    ],
+    "notes": "Use `gsap.quickTo`, not `gsap.to` \u2014 a tween allocated per pointermove is the usual mistake. Listen on a padded wrapper if you want pull from outside the element."
+  }
 }

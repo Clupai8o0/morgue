@@ -16,5 +16,18 @@
   "sourceUrl": null,
   "license": "own",
   "addedAt": "2026-08-05",
-  "usedIn": []
+  "usedIn": [],
+  "export": {
+    "files": [
+      "app/page.jsx",
+      "app/layout.jsx",
+      "next.config.mjs"
+    ],
+    "deps": {
+      "next": "^16",
+      "gsap": "^3.13"
+    },
+    "scaffold": [],
+    "notes": "assetPrefix in next.config is morgue-specific for serving under /item/<slug>. Remove it."
+  }
 }

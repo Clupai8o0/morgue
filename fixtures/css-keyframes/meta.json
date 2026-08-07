@@ -14,5 +14,16 @@
   "sourceUrl": null,
   "license": "own",
   "addedAt": "2026-08-05",
-  "usedIn": []
+  "usedIn": [],
+  "export": {
+    "files": [
+      "index.html"
+    ],
+    "deps": {},
+    "scaffold": [
+      "body",
+      ".stage",
+      ".hint"
+    ]
+  }
 }

@@ -15,5 +15,19 @@
   "sourceUrl": null,
   "license": "own",
   "addedAt": "2026-08-05",
-  "usedIn": []
+  "usedIn": [],
+  "export": {
+    "files": [
+      "src/app.jsx"
+    ],
+    "deps": {
+      "motion": "^12",
+      "react": "^19"
+    },
+    "scaffold": [
+      "body",
+      "#root"
+    ],
+    "notes": "bundle.js is build output \u2014 src/app.jsx is the source you want."
+  }
 }

@@ -16,5 +16,16 @@
   "sourceUrl": null,
   "license": "own",
   "addedAt": "2026-08-05",
-  "usedIn": []
+  "usedIn": [],
+  "export": {
+    "files": [
+      "index.html"
+    ],
+    "deps": {},
+    "scaffold": [
+      "body",
+      ".hint"
+    ],
+    "notes": "animation-timeline: scroll()/view() has no JS fallback. Feature-detect with CSS.supports('animation-timeline: scroll()') if you need one."
+  }
 }

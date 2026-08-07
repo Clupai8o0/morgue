@@ -6,6 +6,10 @@ A *morgue file* is what art departments have always called the drawer of clippin
 reference — the things you look at again when you're trying to work out how something was
 done. This is that, for motion on the web.
 
+> **Where things stand:** [docs/STATUS.md](./docs/STATUS.md) — what's built, what's blocked,
+> what's untested. **Why it's built this way:** [docs/DECISIONS.md](./docs/DECISIONS.md).
+> **What was measured:** [docs/FINDINGS.md](./docs/FINDINGS.md).
+
 You hand it a component. It captures a deterministic video preview, files it under a
 controlled vocabulary, and writes down how the effect actually works. Later you search for
 "the one where the panels pin and scroll sideways" and get the clip, the code, and the note.
@@ -88,6 +92,51 @@ pnpm serve              # http://localhost:8910 (binds 0.0.0.0 for phone/iPad)
 
 pnpm test               # build + capture + site + check, against fixtures/
 ```
+
+### The web app
+
+`web/` is a Next.js 16 app — the public landing page plus the private vault.
+Run its scripts **from the repo root**, not from inside `web/`:
+
+```bash
+pnpm web:dev            # http://localhost:3000
+pnpm web:build
+pnpm verify:web         # drives real Chrome via Playwright — see below
+pnpm db:push            # apply the Drizzle schema to Neon
+pnpm publish:r2         # upload out/ + site/data to R2  (--dry-run to preview)
+```
+
+> Running `pnpm build` *inside* `web/` fails with `ERR_PNPM_IGNORED_BUILDS`.
+> pnpm re-evaluates build approval without the workspace root's `allowBuilds`,
+> and drizzle-kit bundles esbuild. The root scripts above avoid it.
+
+**`pnpm verify:web` exists because a green build proves nothing.** It launches
+real Chrome (`channel: 'chrome'`, so H.264 is present) and asserts the things
+that actually break: that rAF runs, that the entrance observer fires, that
+hover video reaches `readyState 4` with `currentTime` advancing, that Lenis
+intercepts wheel input, and that the magnetic hover displaces. Two days were
+once lost to a "broken" video that was really a backgrounded tab — this is the
+check that would have caught it in seconds.
+
+### Two surfaces, one boundary
+
+| | Public | Private |
+|---|---|---|
+| Route | `/`, `/styleguide` | `/vault`, `/admin`, `/api/media` |
+| Auth | none | GitHub OAuth, allowlisted |
+| Media | `morgue-public` bucket | `morgue-private`, signed URLs only |
+
+The private R2 bucket has **no public access**. Gating the app is worthless if
+the mp4 behind it is fetchable by anyone holding a CDN link — and CDN links
+leak into logs, analytics and history. Public versus private is a property of
+*which bucket a file lives in*, so a routing mistake cannot expose the
+collection.
+
+**Production reads the vault from R2, never from the deploy.** `items/` is
+gitignored, so Vercel builds from a tree that has never contained the
+collection and could not generate the data if it wanted to. `capture → build →
+publish` is the only path anything reaches production — which means a deploy
+has nothing to leak.
 
 ### Adding an item
 

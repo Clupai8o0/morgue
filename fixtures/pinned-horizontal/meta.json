@@ -1,8 +1,12 @@
 {
   "title": "Pinned horizontal scroll",
   "kind": "static",
-  "effect": ["pinned-horizontal"],
-  "technique": ["gsap-scrolltrigger"],
+  "effect": [
+    "pinned-horizontal"
+  ],
+  "technique": [
+    "gsap-scrolltrigger"
+  ],
   "trigger": "scroll",
   "surface": "page",
   "weight": "heavy",
@@ -10,5 +14,19 @@
   "sourceUrl": null,
   "license": "own",
   "addedAt": "2026-08-05",
-  "usedIn": []
+  "usedIn": [],
+  "export": {
+    "files": [
+      "index.html"
+    ],
+    "deps": {
+      "gsap": "^3.13"
+    },
+    "scaffold": [
+      "body",
+      ".intro",
+      ".outro"
+    ],
+    "notes": "The pinned section's height sets the scroll distance; the track translates by (trackWidth - viewportWidth). Recalculate on resize or it desyncs."
+  }
 }

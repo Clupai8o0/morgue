@@ -10,7 +10,13 @@ const srv=createServer(async(req,res)=>{let u=decodeURIComponent(req.url.split('
 await new Promise(r=>srv.listen(8917,r))
 const br=await chromium.launch({args:['--enable-unsafe-swiftshader','--use-angle=metal']})
 let bad=0
-for (const slug of (await readdir(process.cwd()+'/'+SRC)).sort()) {
+// Directories only. items/ also holds .gitkeep (committed on purpose so the
+// gitignored folder survives a clone), and readdir returns it like any other
+// entry — so an empty items/ checked clean and the first real ingest reported a
+// phantom broken item. build.mjs has always filtered this way; this did not.
+const entries = (await readdir(process.cwd()+'/'+SRC, { withFileTypes: true }))
+  .filter(d => d.isDirectory()).map(d => d.name).sort()
+for (const slug of entries) {
   const pg=await br.newPage({viewport:{width:1000,height:700}})
   const errs=[]
   pg.on('pageerror',e=>errs.push('JS:'+String(e).slice(0,50)))

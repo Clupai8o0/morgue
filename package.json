@@ -13,9 +13,19 @@
     "fixtures:capture": "MORGUE_SRC=fixtures node bin/capture.mjs",
     "fixtures:site": "MORGUE_SRC=fixtures node bin/build.mjs",
     "fixtures:check": "MORGUE_SRC=fixtures node bin/check.mjs",
-    "test": "pnpm fixtures:build && pnpm fixtures:capture && pnpm fixtures:site && pnpm fixtures:check"
+    "verify:web": "node bin/verify-web.mjs",
+    "test": "pnpm fixtures:build && pnpm fixtures:capture && pnpm fixtures:site && pnpm fixtures:check",
+    "web:dev": "pnpm --filter web dev",
+    "web:build": "pnpm --filter web build",
+    "web:start": "pnpm --filter web start",
+    "db:push": "pnpm --filter web db:push",
+    "db:studio": "pnpm --filter web db:studio",
+    "publish:r2": "node bin/publish.mjs",
+    "export": "node bin/export.mjs",
+    "optimise": "node bin/optimise.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1102.0",
     "playwright": "1.62.1",
     "sharp": "^0.35.3"
   },

@@ -35,3 +35,11 @@ node_modules/
 .DS_Store
 .env
 .env.*
+# ...but the template must be tracked, or nobody knows what to fill in.
+!.env.example
+
+# ─── web/ ────────────────────────────────────────────────────────────────────
+# The Next app. Source is tracked; build output and local secrets are not.
+web/.next/
+web/out/
+web/next-env.d.ts

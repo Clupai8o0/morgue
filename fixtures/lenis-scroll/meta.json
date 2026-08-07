@@ -15,5 +15,20 @@
   "sourceUrl": null,
   "license": "own",
   "addedAt": "2026-08-05",
-  "usedIn": []
+  "usedIn": [],
+  "export": {
+    "files": [
+      "index.html"
+    ],
+    "deps": {
+      "gsap": "^3.13",
+      "lenis": "^1.3"
+    },
+    "scaffold": [
+      "body",
+      ".hero",
+      ".bar"
+    ],
+    "notes": "Lenis must be ticked by gsap.ticker, not its own rAF loop \u2014 two loops drift half a frame and pinned sections jitter. Keep lagSmoothing(0)."
+  }
 }
