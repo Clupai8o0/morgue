@@ -59,6 +59,23 @@ export const metadata: Metadata = {
   description:
     "A reference collection of UI components and web animations, captured deterministically.",
   metadataBase: new URL("https://morgue.clupai.com"),
+  // All derived from assets/icon-src.png by `pnpm icon`. favicon.ico is picked
+  // up from src/app/ by convention and is not listed here; these are the ones
+  // that need declaring. og.png is 1200x630 with the mark centred rather than
+  // stretched, because social cards crop the edges.
+  icons: {
+    apple: "/apple-touch-icon.png",
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+  },
+  openGraph: {
+    title: "morgue",
+    description:
+      "A reference collection of UI components and web animations, captured deterministically.",
+    images: ["/og.png"],
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
