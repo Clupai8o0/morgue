@@ -1,0 +1,36 @@
+{
+  "title": "Scrambled headline resolve",
+  "kind": "static",
+  "showcase": true,
+  "effect": [
+    "text-scramble",
+    "stagger"
+  ],
+  "technique": [
+    "gsap-core"
+  ],
+  "trigger": "load",
+  "surface": "text",
+  "weight": "light",
+  "source": "demo",
+  "sourceUrl": null,
+  "license": "own",
+  "addedAt": "2026-08-07",
+  "usedIn": [],
+  "export": {
+    "files": [
+      "index.html"
+    ],
+    "deps": {
+      "gsap": "^3.13"
+    },
+    "scaffold": [
+      "body",
+      ".stage",
+      ".eyebrow",
+      ".ghost",
+      ".cap"
+    ],
+    "notes": "The headline must be monospace, or every glyph swap changes the line's width and the whole block reflows on each frame. If the design demands a proportional face, measure each final character once and pin its span to that width with `display: inline-block`."
+  }
+}

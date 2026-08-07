@@ -1,0 +1,207 @@
+<meta charset="utf-8" />
+<title>Cursor ribbon trail</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0b0d; color: #f2f2f0; height: 100vh; overflow: hidden; cursor: none;
+         font: 400 16px/1.4 -apple-system, system-ui, sans-serif;
+         background-image: radial-gradient(rgba(242,242,240,.075) 1px, transparent 1px);
+         background-size: 40px 40px; background-position: 20px 20px; }
+  .field { position: fixed; inset: 0; padding: 34px 40px;
+           display: flex; flex-direction: column; justify-content: space-between; }
+  .hdr, .ftr { display: flex; justify-content: space-between; align-items: baseline;
+               font-size: 11px; letter-spacing: .28em; text-transform: uppercase; opacity: .4; }
+  .ftr { opacity: .26; }
+  .read { font: 400 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+          letter-spacing: .2em; opacity: .75; }
+  .mark { position: absolute; inset: 0; display: grid; place-items: center;
+          font: 500 210px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+          letter-spacing: -.06em; color: rgba(242,242,240,.03); user-select: none; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block;
+           pointer-events: none; }
+</style>
+
+<div class="field">
+  <div class="mark">TRAIL</div>
+  <div class="hdr"><span>Cursor — ribbon trail</span><span class="read" id="read">X 000  Y 000</span></div>
+  <div class="ftr"><span>canvas 2d · sprung head · 0.55s life</span><span>move the pointer</span></div>
+</div>
+<canvas id="rib"></canvas>
+
+<script>
+  const cv = document.getElementById('rib');
+  const ctx = cv.getContext('2d');
+  const read = document.getElementById('read');
+
+  const STEP = 1 / 120;   // physics runs at a fixed rate, never at frame rate
+  const LIFE = 0.55;      // seconds of head history that form the ribbon
+  const K = 520;                                 // spring stiffness
+  const C = 2 * Math.sqrt(K) * 0.42;             // damping: zeta 0.42 → ~23% overshoot
+  const WID = 13;                                // peak half-width, css px
+
+  let W = 0, H = 0;
+  function fit() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // resizing resets the transform, so set it after
+  }
+
+  let px = 0, py = 0, hx = 0, hy = 0, vx = 0, vy = 0, armed = false;
+  let simT = 0, acc = 0, last = null;
+  const hist = [];
+
+  function physics() {
+    vx += ((px - hx) * K - vx * C) * STEP;
+    vy += ((py - hy) * K - vy * C) * STEP;
+    hx += vx * STEP; hy += vy * STEP;
+    simT += STEP;
+    hist.push(hx, hy, simT);
+    // Nothing older than the ribbon is kept. Anything that outlives LIFE — a faint echo of
+    // the gesture, say — also outlives the pointer standing still, and then the last frame
+    // of a looping capture no longer matches the first.
+    while (hist.length && simT - hist[2] > LIFE) hist.splice(0, 3);
+  }
+
+  // A needle at the head, widest just behind it, gone at the tail. Blunting the head end
+  // instead reads as a blob once the head marker is drawn over it.
+  const halfWidth = (a, sp) =>
+    WID * Math.pow(1 - a, 1.25) * Math.min(1, a * 12 + 0.1) * (1 - 0.28 * sp);
+
+  // One quad per sample pair, composited with 'lighter'. Per-vertex alpha is not a thing in
+  // canvas2d; a single gradient-filled polygon only tracks a straight ribbon, and plain
+  // source-over quads leave dark antialiasing seams at every shared edge. 'lighter' turns
+  // those seams into an imperceptible brightening and gives self-overlap a free bloom.
+  function strip(pts, scale, colour, mul) {
+    ctx.fillStyle = colour;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const A = pts[i], B = pts[i + 1];
+      const wa = A.w * scale, wb = B.w * scale;
+      ctx.globalAlpha = ((A.al + B.al) / 2) * mul;
+      ctx.beginPath();
+      ctx.moveTo(A.x + A.nx * wa, A.y + A.ny * wa);
+      ctx.lineTo(B.x + B.nx * wb, B.y + B.ny * wb);
+      ctx.lineTo(B.x - B.nx * wb, B.y - B.ny * wb);
+      ctx.lineTo(A.x - A.nx * wa, A.y - A.ny * wa);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function draw() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!armed) return;
+
+    read.textContent = 'X ' + String(Math.round(hx)).padStart(3, '0') +
+                       '  Y ' + String(Math.round(hy)).padStart(3, '0');
+
+    const sp = Math.min(1, Math.hypot(vx, vy) / 1600);
+
+    // Newest first. hist is a flat [x, y, t, …] ring so the per-frame walk allocates nothing
+    // beyond the point objects the geometry actually needs.
+    const pts = [];
+    for (let i = hist.length - 3; i >= 0; i -= 3) {
+      const a = (simT - hist[i + 2]) / LIFE;
+      if (a > 1) break;
+      pts.push({ x: hist[i], y: hist[i + 1], a, w: halfWidth(a, sp), al: Math.pow(1 - a, 1.55) });
+    }
+    const n = pts.length;
+    if (n < 2) { head(); return; }   // pointer at rest: the ribbon is gone, the cursor is not
+
+    // Two 1-2-1 smoothing passes over the sample positions. Without them a hairpin reversal
+    // leaves two nearly coincident samples with opposite tangents, the normal flips 180°, and
+    // the quad between them opens into a hard-edged kite — very visible on the 2.4× halo pass.
+    for (let pass = 0; pass < 2; pass++) {
+      let prevX = pts[0].x, prevY = pts[0].y;
+      for (let i = 1; i < n - 1; i++) {
+        const cx = pts[i].x, cy = pts[i].y;
+        pts[i].x = (prevX + 2 * cx + pts[i + 1].x) / 4;
+        pts[i].y = (prevY + 2 * cy + pts[i + 1].y) / 4;
+        prevX = cx; prevY = cy;
+      }
+    }
+
+    // Tangent over a ±2 window, and a degenerate segment inherits the previous normal
+    // rather than producing a random one from a zero-length difference.
+    let nx = 0, ny = 0;
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[Math.max(0, i - 2)], p1 = pts[Math.min(n - 1, i + 2)];
+      const dx = p1.x - p0.x, dy = p1.y - p0.y;
+      const L = Math.hypot(dx, dy);
+      if (L > 0.75) { nx = -dy / L; ny = dx / L; }   // 0.75px, not 0: a stalled head packs
+      //                                                samples into a cluster whose tangents
+      //                                                are noise, and the ribbon fans open
+      pts[i].nx = nx; pts[i].ny = ny;
+    }
+
+    ctx.globalCompositeOperation = 'lighter';
+    strip(pts, 2.4, '#66708a', 0.16);   // halo
+    strip(pts, 1.0, '#e8e9ec', 0.42);   // body
+    strip(pts, 0.32, '#ffffff', 0.60);  // core
+    head();
+  }
+
+  // Drawn normally rather than with 'lighter' so it stays crisp instead of blowing out
+  // wherever the ribbon doubles back over it.
+  function head() {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(242,242,240,.5)';
+    ctx.beginPath(); ctx.arc(hx, hy, 11, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(hx - 18, hy); ctx.lineTo(hx - 14, hy);
+    ctx.moveTo(hx + 14, hy); ctx.lineTo(hx + 18, hy);
+    ctx.moveTo(hx, hy - 18); ctx.lineTo(hx, hy - 14);
+    ctx.moveTo(hx, hy + 14); ctx.lineTo(hx, hy + 18);
+    ctx.stroke();
+    ctx.fillStyle = '#f2f2f0';
+    ctx.beginPath(); ctx.arc(hx, hy, 2.2, 0, Math.PI * 2); ctx.fill();
+
+    // The true pointer, plus the leash to the sprung head — the lag is the effect, so show it.
+    ctx.globalAlpha = 0.18;
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(hx, hy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function frame(t) {
+    requestAnimationFrame(frame);
+    if (last === null) { last = t; }
+    let dt = (t - last) / 1000;
+    last = t;
+    if (dt > 0.25) dt = 0.25;          // a backgrounded tab must not spiral the accumulator
+    if (armed) {
+      acc += dt;
+      let guard = 0;
+      while (acc >= STEP && guard++ < 240) { physics(); acc -= STEP; }
+    }
+    draw();
+  }
+
+  fit();
+  addEventListener('resize', fit);
+
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // No loop and no pointer following. Run the same physics over a fixed path once so the
+    // piece still shows what it is, then leave it alone.
+    const arc = (u) => ({ x: W * 0.13 + u * W * 0.74,
+                          y: H * 0.73 - Math.sin(u * Math.PI * 1.15) * H * 0.47 });
+    const s = arc(0); hx = px = s.x; hy = py = s.y; armed = true;
+    for (let i = 1; i <= 220; i++) { const q = arc(i / 220); px = q.x; py = q.y; physics(); }
+    draw();
+  } else {
+    addEventListener('pointermove', (e) => {
+      px = e.clientX; py = e.clientY;
+      if (!armed) { hx = px; hy = py; armed = true; }   // no snap-in from the origin
+    });
+    requestAnimationFrame(frame);
+  }
+
+  window.__ready = true;
+</script>

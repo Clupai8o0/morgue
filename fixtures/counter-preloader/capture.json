@@ -1,0 +1,8 @@
+{
+  "trigger": "load",
+  "viewport": { "width": 1280, "height": 800 },
+  "durationMs": 4000,
+  "fps": 30,
+  "posterAt": 0.55,
+  "settleMs": 400
+}

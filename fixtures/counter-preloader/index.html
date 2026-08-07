@@ -1,0 +1,154 @@
+<meta charset="utf-8" />
+<title>Counter preloader wipe</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0b0d; color: #f2f2f0; height: 100vh; overflow: hidden;
+         font: 400 16px/1.4 -apple-system, system-ui, sans-serif; }
+
+  /* One registered property drives both the digits and the rule beside them.
+     `inherits: true` is what lets a descendant read it — see notes.md. */
+  @property --n { syntax: "<integer>"; inherits: true; initial-value: 0; }
+
+  /* ── the page underneath ─────────────────────────────────────────────── */
+  .page { height: 100vh; padding: 54px 64px; display: flex; flex-direction: column;
+          justify-content: space-between; }
+  .rev { opacity: 0; transform: translate3d(0, 26px, 0);
+         animation: rise 4s cubic-bezier(.22,1,.36,1) infinite;
+         animation-delay: var(--d, 0s); }
+
+  .nav { display: flex; justify-content: space-between; align-items: baseline;
+         padding-bottom: 20px; border-bottom: 1px solid rgba(242,242,240,.10); }
+  .mark { font-size: 13px; letter-spacing: .34em; text-transform: uppercase; }
+  .nav ul { display: flex; gap: 34px; list-style: none; font-size: 11px;
+            letter-spacing: .26em; text-transform: uppercase; opacity: .45; }
+  .stamp { font: 400 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+           letter-spacing: .2em; opacity: .35; }
+  .foot { display: flex; justify-content: space-between; align-items: baseline;
+          padding-top: 20px; border-top: 1px solid rgba(242,242,240,.10); }
+
+  .hero { padding: 4px 0 8px; }
+  .kicker { font-size: 11px; letter-spacing: .3em; text-transform: uppercase;
+            opacity: .38; margin-bottom: 22px; }
+  .hero h1 { font-size: 96px; line-height: .94; font-weight: 500; letter-spacing: -.045em; }
+  .hero h1 em { font-style: normal; opacity: .34; }
+
+  .strip { display: grid; grid-template-columns: repeat(4, 1fr);
+           border-top: 1px solid rgba(242,242,240,.10); }
+  .strip article { padding: 24px 24px 24px 0; border-right: 1px solid rgba(242,242,240,.07); }
+  .strip article:last-child { border-right: 0; }
+  .strip .i { display: block; font: 400 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+              letter-spacing: .2em; opacity: .32; margin-bottom: 14px; }
+  .strip .t { display: block; font-size: 19px; letter-spacing: -.01em; margin-bottom: 6px; }
+  .strip .m { display: block; font-size: 11px; letter-spacing: .24em;
+              text-transform: uppercase; opacity: .3; }
+
+  /* ── the loading sheet on top ────────────────────────────────────────── */
+  .loader { position: fixed; inset: 0; z-index: 10; overflow: hidden; pointer-events: none;
+            animation: count 4s linear infinite; }
+  .col { position: absolute; top: 0; bottom: 0; width: calc(25% + 1px); background: #16161c;
+         border-right: 1px solid rgba(242,242,240,.06);
+         animation: lift 4s cubic-bezier(.76,0,.24,1) infinite; }
+  .col:nth-child(1) { left: 0 }
+  .col:nth-child(2) { left: 25%; animation-delay: .06s }
+  .col:nth-child(3) { left: 50%; animation-delay: .12s }
+  .col:nth-child(4) { left: 75%; animation-delay: .18s; border-right: 0 }
+
+  /* The hud rides the sheet up rather than fading out first, so the count is still on
+     screen while the reveal happens. It takes column 1's timing — NOT a mid-stagger
+     delay — because it must never lag the fastest column, or its lower rows end up
+     floating over the page that column has already uncovered. */
+  .hud { position: absolute; inset: 0; padding: 54px 64px;
+         display: flex; flex-direction: column; justify-content: space-between;
+         animation: lift 4s cubic-bezier(.76,0,.24,1) infinite; }
+  .hud .top, .hud .btm { display: flex; justify-content: space-between; align-items: baseline;
+                         font-size: 11px; letter-spacing: .28em; text-transform: uppercase; }
+  .hud .top { opacity: .4; }
+  .hud .btm { opacity: .22; }
+  /* Centred, so the count is still on screen through half the sheet's travel instead of
+     clearing the frame in the first few percent. */
+  .hud .mid { display: flex; align-items: flex-end; gap: 34px; }
+  /* Fixed width goes on the pair, not the digits — so `%` hugs the number as it grows
+     from 0 to 100 while the rule beside it never shifts. */
+  .count { display: flex; align-items: flex-end; min-width: 322px; }
+  .num { font: 500 150px/.8 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         letter-spacing: -.05em; font-variant-numeric: tabular-nums;
+         counter-reset: n var(--n); }
+  .num::after { content: counter(n); }
+  .pct { font-size: 19px; opacity: .4; padding: 0 0 14px 10px; }
+  .bar { flex: 1; height: 1px; background: rgba(242,242,240,.14); margin-bottom: 20px; }
+  .bar i { display: block; height: 1px; background: #f2f2f0; transform-origin: left;
+           transform: scaleX(calc(var(--n) / 100)); }
+
+  /* ── keyframes ───────────────────────────────────────────────────────────
+     Everything is one 4s infinite loop that ends where it starts, so the
+     recorded preview cuts back to frame 0 without a jump. Percentages of 4s:
+       0–40%  count up       44–60% sheet lifts, page rises behind it
+       60–82% page revealed  82–92% sheet drops back   92–100% rest         */
+
+  @keyframes count {          /* linear on purpose — the stalls come from the stops */
+    0%, 4%    { --n: 0 }
+    11%       { --n: 24 }
+    15%       { --n: 29 }
+    21%       { --n: 55 }
+    25%       { --n: 61 }
+    31%       { --n: 84 }
+    35%       { --n: 89 }
+    40%, 68%  { --n: 100 }
+    70%, 100% { --n: 0 }      /* resets while the hud is off the top of the screen */
+  }
+  @keyframes lift {
+    0%, 45%   { transform: translate3d(0, 0, 0) }
+    60%, 82%  { transform: translate3d(0, -101%, 0) }
+    92%, 100% { transform: translate3d(0, 0, 0) }
+  }
+  @keyframes rise {
+    0%, 44%   { opacity: 0; transform: translate3d(0, 26px, 0) }
+    60%, 91%  { opacity: 1; transform: translate3d(0, 0, 0) }
+    94%, 100% { opacity: 0; transform: translate3d(0, 26px, 0) }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loader { display: none }
+    .rev { opacity: 1; transform: none; animation: none }
+  }
+</style>
+
+<main class="page">
+  <header class="nav rev">
+    <span class="mark">Morgue</span>
+    <ul><li>Index</li><li>Effects</li><li>Techniques</li><li>Sources</li></ul>
+    <span class="stamp">2026 — 08</span>
+  </header>
+
+  <section class="hero rev" style="--d:.05s">
+    <p class="kicker">Reference collection</p>
+    <h1>Motion worth<br /><em>keeping around</em></h1>
+  </section>
+
+  <section class="strip rev" style="--d:.10s">
+    <article><span class="i">01</span><span class="t">Pinned horizontal</span><span class="m">scroll · heavy</span></article>
+    <article><span class="i">02</span><span class="t">Magnetic button</span><span class="m">hover · light</span></article>
+    <article><span class="i">03</span><span class="t">Displacement plane</span><span class="m">load · heavy</span></article>
+    <article><span class="i">04</span><span class="t">Scrambled headline</span><span class="m">load · light</span></article>
+  </section>
+
+  <footer class="foot rev" style="--d:.15s">
+    <span class="stamp">62 items</span>
+    <span class="stamp">16 effects</span>
+    <span class="stamp">11 techniques</span>
+  </footer>
+</main>
+
+<div class="loader" aria-hidden="true">
+  <i class="col"></i><i class="col"></i><i class="col"></i><i class="col"></i>
+  <div class="hud">
+    <div class="top"><span>Loading reference set</span><span>morgue / 2026</span></div>
+    <div class="mid">
+      <div class="count"><div class="num"></div><span class="pct">%</span></div>
+      <div class="bar"><i></i></div>
+    </div>
+    <div class="btm"><span>Decoding preview media</span><span>4 of 4 sets</span></div>
+  </div>
+</div>
+
+<script>window.__ready = true</script>

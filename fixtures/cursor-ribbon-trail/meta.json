@@ -1,0 +1,34 @@
+{
+  "title": "Cursor ribbon trail",
+  "kind": "static",
+  "showcase": true,
+  "effect": [
+    "cursor-distortion"
+  ],
+  "technique": [
+    "canvas2d"
+  ],
+  "trigger": "hover",
+  "surface": "cursor",
+  "weight": "medium",
+  "source": "demo",
+  "sourceUrl": null,
+  "license": "own",
+  "addedAt": "2026-08-07",
+  "usedIn": [],
+  "export": {
+    "files": [
+      "index.html"
+    ],
+    "deps": {},
+    "scaffold": [
+      "body",
+      ".field",
+      ".hdr",
+      ".ftr",
+      ".mark",
+      ".read"
+    ],
+    "notes": "Run the spring on a fixed timestep and only the draw on rAF — integrating with the raw frame delta makes the ribbon a different length on a 120Hz display than on a 60Hz one. Also: `body { cursor: none }` is part of the effect, so give it a real fallback (touch devices, and any state where the canvas has not painted yet, leave the user with no pointer at all)."
+  }
+}

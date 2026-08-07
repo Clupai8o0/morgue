@@ -1,0 +1,114 @@
+<meta charset="utf-8" />
+<title>Scrambled headline resolve</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0b0d; color: #f2f2f0; height: 100vh; display: grid; place-items: center;
+         font: 400 16px/1.4 -apple-system, system-ui, sans-serif; overflow: hidden; }
+  .stage { width: 720px; }
+  .eyebrow { display: flex; justify-content: space-between; align-items: baseline;
+             font-size: 11px; letter-spacing: .28em; text-transform: uppercase; opacity: .38; }
+  .rule { height: 1px; background: rgba(242,242,240,.10); margin: 13px 0 44px; }
+  .rule i { display: block; height: 1px; background: #f2f2f0;
+            transform: scaleX(0); transform-origin: left; }
+  /* Monospace is not a style choice here — see notes.md. Every glyph in the
+     scramble set must occupy the same advance width or the line reflows. */
+  .head { font: 500 66px/1.06 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          letter-spacing: -.015em; }
+  .line { display: block; white-space: pre; }
+  .line span { display: inline-block; }
+  .ghost { margin-top: 46px; height: 13px; overflow: hidden; white-space: nowrap;
+           font: 400 10px/13px ui-monospace, SFMono-Regular, Menlo, monospace;
+           letter-spacing: .34em; color: rgba(242,242,240,.17); }
+  .cap { margin-top: 32px; font-size: 11px; letter-spacing: .3em;
+         text-transform: uppercase; opacity: .26; }
+</style>
+
+<div class="stage">
+  <div class="eyebrow"><span>Reference collection</span><span class="pct">Resolve 000%</span></div>
+  <div class="rule"><i></i></div>
+  <h1 class="head">
+    <span class="line" data-text="A MORGUE FOR"></span>
+    <span class="line" data-text="GOOD MOTION"></span>
+  </h1>
+  <div class="ghost"></div>
+  <div class="cap">text scramble — per-character stagger</div>
+</div>
+
+<script src="/vendor/gsap.min.js"></script>
+<script>
+  const GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&$@/\\<>*+=:;~^';
+  const CYCLE = 3.5;            // loop length, seconds — must equal durationMs/1000
+  const HZ = 16, GHZ = 12;      // glyph churn rates; both divide CYCLE into whole steps
+  const STEPS = CYCLE * HZ, GSTEPS = CYCLE * GHZ;
+  const BAND = 0.34;            // how much of the line is mid-resolve at any moment
+  const GCOLS = 84;
+
+  // Deterministic stand-in for Math.random: the same (index, step) pair always yields the
+  // same glyph, so two capture runs produce byte-identical frames.
+  const hash = (a, b) => {
+    let h = (Math.imul(a, 0x9e3779b1) + Math.imul(b, 0x85ebca6b)) >>> 0;
+    h = Math.imul(h ^ (h >>> 15), 0x2545f491) >>> 0;
+    return (h ^ (h >>> 13)) >>> 0;
+  };
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+  const chars = [];
+  const lines = [...document.querySelectorAll('.line')];
+  const total = lines.reduce((n, l) => n + l.dataset.text.length, 0);
+  let idx = 0;
+  for (const line of lines) {
+    for (const ch of line.dataset.text) {
+      const el = document.createElement('span');
+      el.textContent = ch;
+      line.appendChild(el);
+      chars.push({ el, ch, i: idx, u: idx / (total - 1) });
+      idx++;
+    }
+  }
+
+  const ghost = document.querySelector('.ghost');
+  const pct = document.querySelector('.pct');
+  const sweep = { p: 0 };
+
+  function render() {
+    const t = tl.time();
+    const step = Math.floor(t * HZ) % STEPS;
+    const p = sweep.p;
+
+    for (const c of chars) {
+      if (c.ch === ' ') continue;
+      // local: 0 = still noise, 1 = locked. The +BAND term lets the leading edge run
+      // past the end of the line so the last character actually finishes.
+      const local = clamp01((p * (1 + BAND) - c.u) / BAND);
+      const settled = hash(c.i, step) / 4294967296 < local;
+      c.el.textContent = settled ? c.ch : GLYPHS[hash(c.i * 7 + 11, step) % GLYPHS.length];
+      c.el.style.opacity = (0.3 + 0.7 * local).toFixed(3);
+    }
+
+    const gstep = Math.floor(t * GHZ) % GSTEPS;
+    let row = '';
+    for (let i = 0; i < GCOLS; i++) row += GLYPHS[hash(i * 31 + 3, gstep) % GLYPHS.length];
+    ghost.textContent = row;
+
+    pct.textContent = 'Resolve ' + String(Math.round(p * 100)).padStart(3, '0') + '%';
+  }
+
+  // One timeline is the only clock. Everything else — glyph churn, the percentage
+  // readout, per-character locking — is a pure function of tl.time(), so the whole
+  // piece can be scrubbed, reversed or seeked to any frame and it stays correct.
+  const tl = gsap.timeline({ repeat: -1, onUpdate: render });
+  tl.to(sweep, { p: 1, duration: 1.70, ease: 'power2.inOut' }, 0.15)
+    .to('.rule i', { scaleX: 1, duration: 1.70, ease: 'power2.inOut' }, 0.15)
+    .to(sweep, { p: 0, duration: 0.55, ease: 'power2.in' }, 2.80)
+    .to('.rule i', { scaleX: 0, duration: 0.55, ease: 'power2.in' }, 2.80)
+    .to({}, { duration: 0.15 }, 3.35);   // pads the timeline to exactly CYCLE
+
+  // onUpdate does not fire for the tick that renders time 0 — nothing has moved yet — so
+  // without this the spans keep the true text they were built with and frame 0 of the
+  // capture shows the finished headline. Paint the t=0 state once, by hand.
+  render();
+
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) tl.seek(2.1).pause();
+
+  window.__ready = true;
+</script>

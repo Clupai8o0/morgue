@@ -1,0 +1,36 @@
+{
+  "title": "Counter preloader wipe",
+  "kind": "static",
+  "showcase": true,
+  "effect": [
+    "preloader",
+    "mask-reveal"
+  ],
+  "technique": [
+    "css-only"
+  ],
+  "trigger": "load",
+  "surface": "page",
+  "weight": "medium",
+  "source": "demo",
+  "sourceUrl": null,
+  "license": "own",
+  "addedAt": "2026-08-07",
+  "usedIn": [],
+  "export": {
+    "files": [
+      "index.html"
+    ],
+    "deps": {},
+    "scaffold": [
+      "body",
+      ".page",
+      ".nav",
+      ".hero",
+      ".strip",
+      ".foot",
+      ".stamp"
+    ],
+    "notes": "In a real app this runs once and then leaves, so drop the `infinite` and the 82–100% return keyframes and end on `animation-fill-mode: forwards` — the loop-back exists only so the recorded preview cuts cleanly. Remove `.loader` from the DOM once it has finished; a `position: fixed; inset: 0` sheet left in place still costs a full-viewport composited layer even at `pointer-events: none`."
+  }
+}
