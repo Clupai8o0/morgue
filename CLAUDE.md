@@ -131,9 +131,33 @@ React `useEffect` works.
    pausing it freezes the effect while the page keeps moving — the capture looks fine and is
    not. Caught only by looking at contact sheets.
 
-2. **Next.js exports need `assetPrefix`.** Set `assetPrefix: '/item/<slug>'`, `output: 'export'`
-   and `images.unoptimized: true`. Without it every `_next` chunk 404s in the built site while
-   capture passes. The capture server strips that prefix so one build serves both.
+2. **Next.js exports need a mount prefix — `assetPrefix` for one route, `basePath` for many.**
+   Always set `output: 'export'` and `images.unoptimized: true`. Without a prefix every
+   `_next` chunk 404s in the built site while capture passes. The capture server strips the
+   prefix so one build serves both.
+
+   Which prefix depends on whether the item navigates:
+
+   - **`assetPrefix: '/item/<slug>'`** — single-route items. It rewrites `/_next/` and
+     nothing else.
+   - **`basePath: '/archive/<name>'`** — anything with working internal navigation, i.e.
+     every archive. It additionally rewrites every `next/link` href and the app-metadata
+     favicon.
+
+   Picking `assetPrefix` for a multi-route item is a real bug that hides well: the entry
+   page loads, and only a *click* reveals that `<Link href="/about">` resolves against the
+   vault root and 404s, while `href="/"` serves the vault grid at 200. `bin/check.mjs`
+   clicks up to six links per item precisely because a `goto` alone cannot see it. It cost
+   `blunt-preloader` its place in the collection — retired 2026-08-08, superseded by
+   `blunt-template` off `archives/blunt-main`, which is the same template built with
+   `basePath`.
+
+   **Neither prefix touches hand-written strings.** Measured on a purpose-built probe route:
+   `basePath` leaves raw `<img src>` and raw `<a href>` alone, and under `output: 'export'`
+   it does not rewrite `next/image` src either. Use a post-build pass over `out/` — see
+   `archives/blunt-main/morgue-rewrite.mjs`, which is anchored on the path rather than on a
+   quote and so also catches the template-literal case in rule 11 that no source rewrite can
+   reach.
 
 3. **New vendored libraries go in `bin/vendor.mjs`.** Capture and the site both read that map.
    Adding a copy to one and not the other is how the Three.js item 404'd only on its detail page.
@@ -147,15 +171,17 @@ React `useEffect` works.
 
 11. **Image optimisation never renames a file.** `pnpm optimise` re-encodes under the same name
     and the same extension; `--format` requires `--allow-rename` and then refuses every file it
-    cannot prove safe. `blunt-preloader/src/components/HeroSpotlight/HeroSpotlight.js:23` builds
-    its paths with a template literal — `` `…/showreel_img_${i + 1}.jpg` `` — and the same
-    computed form survives minification into `_next/static/chunks/`, so for those ten files
-    there is no string to rewrite anywhere in the tree. A rename 404s after hydration, which
-    `pnpm check` cannot see: it loads one route for 1.4s. Optimise on the way into `site/`,
-    never before `pnpm capture` (the poster is encoded at dpr 2 and `preview.mp4` is the
-    archival record), and never into `items/` without `--in-place --yes --backup <dir>` — that
-    is paid source with no backup. Numbered 11 to avoid colliding with the web rules below;
-    it is an ingest rule, not a web one.
+    cannot prove safe. `archives/blunt-main/src/components/HeroSpotlight/HeroSpotlight.js:23`
+    builds its paths with a template literal — `` `…/showreel_img_${i + 1}.jpg` `` — and the
+    same computed form survives minification into `_next/static/chunks/`, so for those ten
+    files there is no string to rewrite anywhere in the tree. A rename 404s after hydration,
+    which `pnpm check` cannot see: it loads one route for 1.4s. Optimise on the way into
+    `site/`, never before `pnpm capture` (the poster is encoded at dpr 2 and `preview.mp4` is
+    the archival record), and never into `items/` without `--in-place --yes --backup <dir>` —
+    that is paid source with no backup. Run against `items/` on 2026-08-08 for the first time:
+    `livespot360-reveal` went 34.97 MB → 2.94 MB (−91.6%) with filenames and format kept, and
+    the originals are in `~/morgue-backups/2026-08-08/`. Numbered 11 to avoid colliding with
+    the web rules below; it is an ingest rule, not a web one.
 
 ## Rules for web/
 

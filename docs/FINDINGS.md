@@ -3,8 +3,13 @@
 Measurements taken on this machine (macOS, Apple M5 Pro, Chrome via Playwright 1.62.1,
 ffmpeg 8.1.1). Everything here is either reproduced locally or explicitly marked unverified.
 
-Last updated: 2026-08-07. Figures printed by `du -sh` are MiB as shown; byte-exact figures
+Last updated: 2026-08-08. Figures printed by `du -sh` are MiB as shown; byte-exact figures
 are decimal bytes.
+
+Measurements are kept as taken, with the date they were taken on. Where a later session
+changed the thing being measured — the 2026-08-08 optimise pass and the retirement of
+`blunt-preloader` both did — the old figures stay and a newer section supersedes them. A
+findings log that gets edited to match the present cannot show you a trend.
 
 ## Browser ceilings
 
@@ -188,14 +193,23 @@ Linear extrapolation, no optimisation anywhere on the ingest path:
 | Recoverable by content-dedup alone | 21.6 MB (35%) | ~2.2 GB |
 
 Nothing on the ingest path (`capture` → `build` → `check`) resizes or re-encodes. These are
-the bytes on disk as measured on 2026-08-07; a `pnpm optimise` tool now exists but defaults to
-a dry run, so none of the above has been reclaimed yet.
+the bytes on disk as measured on 2026-08-07, before anything was reclaimed. **Superseded on
+2026-08-08** — see "The first optimise pass against `items/`" below, which took the largest
+of them down by 91.6%.
 
 ### `site/` and the publish payload accumulate orphans
 
 `build.mjs` copies into `site/` and never deletes. `items/` holds 3 slugs; `site/item/` and
 `site/media/` hold 11 — the 8 extra are fixture output left over from an earlier build with
 `MORGUE_SRC=fixtures`. `publish.mjs` walks `site/`, not the index, so it would upload them.
+
+**Worse as of 2026-08-08, and now with a sharper edge.** `items/` holds 6 slugs; `site/item/`
+and `site/media/` hold 17 each and `site/data/items/` holds 18 — 11 orphans against a
+6-record index. Retiring an item exposed the real hazard: `site/` retained
+`item/blunt-preloader/` and `media/blunt-preloader/` after the item was deleted, so a
+`publish:r2` run would have uploaded the media of a **retired paid template** to a bucket
+nothing will ever clean. Those two directories were removed by hand. Nothing in the pipeline
+would have done it, and nothing warns.
 
 | `pnpm publish:r2 --dry-run` | Files | Bytes |
 |---|---|---|
@@ -220,6 +234,10 @@ The bigger bundle is the *simpler* item: a `static` item inlines whole files, an
 one refuses to and cites the archive instead. Bundle size tracks inlining policy, not
 complexity.
 
+`blunt-preloader` was retired on 2026-08-08, so that row is no longer reproducible. Its
+successor `blunt-template` is the same kind against the same source and exports on the same
+policy.
+
 Two ad-hoc Playwright suites verified bundle *content* on 2026-08-06 — paid `static` 15/15
 (PAID banner, 3 fenced source blocks), `unextracted` 9/9 (no source inlined, points at the
 entry, real deps, carries the `isInitialLoad` warning). **Those scripts were in session scratch
@@ -237,22 +255,81 @@ and are gone.** The assertions are not currently reproducible.
   surviving matches in the tree are comments recording the removal.
 - **Next.js `<Link>` prefetch breaks multi-route exports.** Next prefetches sibling routes;
   neither the capture server nor `check.mjs` does directory-index resolution, so `/about` 404s
-  and fails the capture. Fixed with `prefetch={false}` — 9 occurrences across 4 files in
-  `blunt-preloader`. Any future multi-route ingest hits this.
+  and fails the capture. Fixed with `prefetch={false}` — 9 occurrences across 4 files in the
+  standalone `blunt-preloader` build. Any future multi-route ingest hits this.
 - **`assetPrefix` does not cover hand-written `<img src="/…">`.** It only rewrites
-  Next-managed assets. `blunt-preloader/src` contains **54** hand-written `/images/…` strings
-  (55 absolute `/item/<slug>/` paths in total). Rewriting them *prefixed-absolute*
-  (`/item/<slug>/images/…`) rather than relative is better: the capture server strips
-  `/item/<slug>`, so one string is correct on both surfaces **and** from every route, not just
-  the home one.
+  Next-managed assets. The blunt source contains **54** hand-written `/images/…` strings
+  (55 absolute `/item/<slug>/` paths in total). The 2026-08-06 fix rewrote them all in source,
+  *prefixed-absolute* rather than relative, so one string is correct on both surfaces and from
+  every route.
+
+  **Superseded on 2026-08-07 by the archive migration.** Source rewriting works for 53 of the
+  54 and cannot work for the 54th: `HeroSpotlight.js:23` builds its path with a template
+  literal, so no complete string exists to substitute. `archives/blunt-main/morgue-rewrite.mjs`
+  rewrites over the built `out/` instead, anchored on the path rather than on a quote —
+  `rewrote 275 asset refs across 14 file(s)`, template literal included. Prefer the post-build
+  pass. Rule 11 is the same lesson from the renaming side.
 - **`capture.mjs` fakes rAF, `performance.now` and `Date.now` — but not `setTimeout`**
   (`bin/capture.mjs:65–70`). Anything sequenced on a timer runs in real wall-clock time
   interleaved with screenshot round-trips, so its frame position drifts with machine load.
 - **Determinism has a ceiling: some templates can never be frame-deterministic.**
-  `blunt-preloader/src` has 12 `Math.random` / `from: "random"` call sites driving shuffles and
-  staggers. `motionCheck` passes; frame-diffing two runs never will. That is the template's
+  `archives/blunt-main/src` has 12 `Math.random` / `from: "random"` call sites driving shuffles
+  and staggers. `motionCheck` passes; frame-diffing two runs never will. That is the template's
   design, not a pipeline fault. The 1113/1113 result above is a property of `fixtures/`, not of
   the capture harness.
+
+## The first optimise pass against `items/` — 2026-08-08
+
+`pnpm optimise` had never been run with `--write` against the real collection. It was, on
+`livespot360-reveal`, through the four-flag destructive path
+(`--write --in-place --yes --backup`). Filenames and formats kept, per rule 11.
+
+| | Before | After | Change |
+|---|---|---|---|
+| `livespot360-reveal` on disk | 35 MB | 3.1 MB | −91% |
+| Its 10 JPEGs | 34.97 MB | 2.94 MB | **−91.6%** |
+| Worst single file (`img1.jpg`) | 6,521,845 B | 757 KB | −88.4% |
+
+The dry run predicted 2.94 MB and the write produced 2.94 MB — the estimator is exact,
+because it encodes the file to measure it rather than modelling the encoder. 506.5 KB of the
+output is byte-identical copies, hardlinked on write.
+
+**The plan was `2560w q82` on all ten, not a format change.** These images were
+over-*quality*, not over-format: 2800×1575 at 4:4:4 and 1.48 bpp, stacked ten deep inside a
+`275px × 150px` box. Nothing needed to become a WebP for the collection to lose 32 MB.
+
+`out/livespot360-reveal/preview.mp4` and `poster.webp` still carry their 2026-08-06
+timestamps. That is rule 11 working as designed: the archival record was encoded from the
+original bytes and the optimiser cannot reach it. The corollary is a live trap — **re-capture
+that item now and the new preview is encoded from the optimised source.** The old preview is
+not reproducible from what is on disk.
+
+### Retiring an item beats optimising it
+
+`blunt-preloader` was retired the same day (see STATUS). It removed 23 MB from `items/` for
+zero loss of collection value, because `blunt-template` documents the same effect off the
+same archive. Set against the optimise pass:
+
+| Action | Bytes recovered from `items/` |
+|---|---|
+| Optimise `livespot360-reveal` | 32 MB |
+| Retire `blunt-preloader` | 23 MB |
+| **`items/` total** | **62 MB → 6.9 MB (−89%)** |
+
+`out/` went 429 MB → 409 MB and `site/` 129 MB → 64 MB in the same pass.
+
+The collection now has two distinct cost profiles, and the 2026-08-07 extrapolation of
+~6.2 GB at 300 items no longer describes either:
+
+| Shape | Count | Mean on disk |
+|---|---|---|
+| Archive-backed cards | 4 | ~19 KB |
+| Standalone items, post-optimise | 2 | ~3.4 MB |
+
+Which means the 300-item figure is now a question about *mix*, not about bytes per item.
+All-archive-backed is ~6 MB; all-standalone-and-optimised is ~1 GB; the 2026-08-07 path was
+~6.2 GB. Nothing on the ingest path applies the optimiser automatically, so the middle number
+is the one to plan against.
 
 ## Not verified here
 
@@ -270,10 +347,11 @@ Carried from research, reproduced only in part. Treat as leads, not facts:
 ## Still untested
 
 - **Extraction proper.** *Ingesting* a commercial template is now measured; *isolating* one
-  section out of a large one so it runs standalone is not. `blunt-preloader` is
-  `kind: unextracted` for exactly that reason — the whole site was stored and captured rather
-  than reduced: 63 files under `src/`, 251 in the item. The number that matters, hours to
-  isolate one effect, has never been taken.
+  section out of a large one so it runs standalone is not. `blunt-template` is
+  `kind: unextracted` for exactly that reason — the whole site is stored and captured rather
+  than reduced, 63 files under `src/`. The number that matters, hours to isolate one effect,
+  has never been taken. The archive model makes deferring cheap, which also means nothing
+  forces the question.
 - **`kind: reference`.** No item of that kind exists. The cheapest path in the contract is the
   only one never walked.
 - **The video LRU.** Cap is 12; the built index has 3 items. Eviction still does nothing.

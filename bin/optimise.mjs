@@ -20,9 +20,9 @@
 // before capture and you degrade the one artefact you keep forever.
 //
 // WHY THE DEFAULT KEEPS THE FILENAME AND THE FORMAT:
-// items/blunt-preloader/src/components/HeroSpotlight/HeroSpotlight.js:23 builds
+// archives/blunt-main/src/components/HeroSpotlight/HeroSpotlight.js:23 builds
 // its paths with a template literal —
-//   `/item/blunt-preloader/images/showreel/showreel_img_${i + 1}.jpg`
+//   `/images/showreel/showreel_img_${i + 1}.jpg`
 // — and the same computed form survives minification into
 // _next/static/chunks/*.js. For those ten files the string "showreel_img_1.jpg"
 // does not exist anywhere in the tree, so no substitution can repair a rename;
@@ -146,7 +146,7 @@ function planFor(rel, meta, plan) {
   const pinned = plan?.pin?.includes(rel)
   const quality = Number(over.quality ?? plan?.defaults?.quality ?? QUALITY)
   // A pinned file only ever gets the global cap. Probe data is a floor, not a
-  // ceiling — the probe visits one route at one viewport, and blunt-preloader
+  // ceiling — the probe visits one route at one viewport, and blunt-main
   // has seven routes, so "never seen large" is not "never large".
   const capRaw = pinned ? MAX_WIDTH : Number(over.maxWidth ?? plan?.defaults?.maxWidth ?? MAX_WIDTH)
   const cap = bucket(capRaw)
@@ -265,7 +265,7 @@ async function planRenames(dir, files, slug, candidates, computed) {
   // basename → every file in the tree that has it. A repeated basename is only
   // a problem for references that use the bare form; a reference that spells
   // out a path is unambiguous no matter how many files share the last segment,
-  // and in a Next tree basenames repeat constantly (blunt-preloader has seven
+  // and in a Next tree basenames repeat constantly (blunt-main has seven
   // byte-identical JPEGs under seven different directories).
   const byBase = new Map()
   for (const rel of files) {
@@ -364,7 +364,7 @@ async function analyse(slug) {
     }
     const enc = await encode(buf, p)
     // Never emit a file larger than the input. Measured: 7 of 33 unique images
-    // GREW under a plain q82/2560 pass — blunt-preloader is already at 0.026
+    // GREW under a plain q82/2560 pass — blunt-main is already at 0.026
     // bpp, so re-encoding it buys nothing and costs bytes.
     if (enc.length >= buf.length) {
       rows.push({ rel, meta, size: buf.length, out: buf.length, action: 'keep', note: 'would grow', hash: md5(buf), bytes: buf })

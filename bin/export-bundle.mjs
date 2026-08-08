@@ -145,7 +145,7 @@ function librariesInSource(item) {
 }
 
 // Deliberately not "read the item's package.json and list that". A template's
-// package.json describes the whole template, not the effect: blunt-preloader's
+// package.json describes the whole template, not the effect: blunt-main's
 // lists `three`, which nothing under its src/ imports. Reading it naively would
 // swap one confident lie for another — this time one that costs an install and
 // a bundle. The curated export.deps is the corrective for exactly that, so when

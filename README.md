@@ -99,7 +99,7 @@ pnpm test               # build + capture + site + check, against fixtures/
 Run its scripts **from the repo root**, not from inside `web/`:
 
 ```bash
-pnpm web:dev            # http://localhost:3000
+pnpm web:dev            # http://localhost:3210 — matches verify:web and the OAuth callback
 pnpm web:build
 pnpm verify:web         # drives real Chrome via Playwright — see below
 pnpm db:push            # apply the Drizzle schema to Neon

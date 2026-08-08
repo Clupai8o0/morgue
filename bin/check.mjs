@@ -84,8 +84,10 @@ for (const {slug,href} of records) {
     // (/archive/blunt-main vs base /archive/blunt-main/) failed startsWith and was
     // reported as an escape at 200 while serving exactly the right document. That
     // was every archive-backed item's only "failure". Compare against the bare
-    // form too — this still catches blunt-preloader's real one, where base is
-    // /item/blunt-preloader/ and the links are / and /about.
+    // form too — narrow enough that it still catches a real escape, which is an
+    // assetPrefix item whose inherited nav resolves against the vault root: base
+    // /item/<slug>/ against links / and /about. That is what retired
+    // blunt-preloader on 2026-08-08; see CLAUDE.md rule 2.
     const escapes=!link.startsWith(base) && link!==base.replace(/\/$/,'')
     if(status>=400||status==='ERR'||escapes)
       errs.push(`LINK ${link} → ${status}${escapes?' (escapes '+base+')':''}`)

@@ -2,7 +2,7 @@
 // Surveys a template archive and PROPOSES extractable candidates.
 //
 //   pnpm survey <archive>            → archives/<archive>/candidates.json
-//   pnpm survey items/blunt-preloader  (any path works; output still goes to archives/)
+//   pnpm survey archives/blunt-main  (any path works; output still goes to archives/)
 //
 // Flags: --json (stdout, write nothing) · --all (no cap) · --only <id> · --quiet
 //
@@ -22,7 +22,7 @@
 // and read, never as a fact you are asked to trust.
 //
 // ─── Why detectors are closure-scoped, never file-scoped ────────────────────
-// Measured over items/blunt-preloader/src (32 JS, 30 CSS): gsap.registerPlugin
+// Measured over archives/blunt-main/src (32 JS, 30 CSS): gsap.registerPlugin
 // fires in 17 files, useLenis in 13, and 25 of 30 stylesheets read a custom
 // property they do not define. Reported per file that is noise which tags
 // everything — the exact rot CLAUDE.md's controlled-vocabulary section exists
@@ -1624,7 +1624,7 @@ if (isMain) {
       : []
     console.error(available.length
       ? `Archives:\n  ${available.join('\n  ')}`
-      : `No archives yet. ${path.relative(ROOT, ARCHIVES)}/ does not exist — unpack a template into it, or pass a path (e.g. \`pnpm survey items/blunt-preloader\`).`)
+      : `No archives yet. ${path.relative(ROOT, ARCHIVES)}/ does not exist — unpack a template into it, or pass a path (e.g. \`pnpm survey path/to/template\`).`)
     process.exit(1)
   }
 
