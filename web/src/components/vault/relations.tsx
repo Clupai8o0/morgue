@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getItem } from "@/lib/vault-data";
-import type { Item } from "@/lib/types";
+import { PreviewMedia } from "@/components/vault/preview-media";
+import { previewRef, type Item } from "@/lib/types";
 
 /**
  * The Relations surface on the detail page — the only place a family is
@@ -20,6 +21,13 @@ import type { Item } from "@/lib/types";
  * bounded — and it is exactly why relations are NOT resolved for the grid,
  * where it would be N reads per card. If /vault/[slug] ever gets slow, this is
  * the first suspect.
+ *
+ * The thumbnails are the one client-side thing on this surface. <PreviewMedia>
+ * is a client component nested inside these server-rendered links; it binds
+ * hover to `closest("a")`, so the card keeps whole-card hover without this
+ * module needing "use client" and dragging the record reads into the bundle.
+ * They ask for the `xs` rung — these paint around 180px, a ninth of the pixels
+ * the 600px preview carries.
  */
 
 export interface Family {
@@ -138,17 +146,26 @@ export function RelationsSection({
       {!isTemplate && family.parent ? (
         <Link
           href={`/vault/${family.parent.slug}`}
-          className="bg-surface-1 rounded-lg p-sm mb-md border-hairline-soft hover:border-hairline block border transition-[transform,border-color] duration-[var(--duration-base)] ease-[var(--ease-out-expo)] hover:-translate-y-[2px]"
+          className="bg-surface-1 rounded-lg p-sm mb-md border-hairline-soft hover:border-hairline gap-sm flex border transition-[transform,border-color] duration-[var(--duration-base)] ease-[var(--ease-out-expo)] hover:-translate-y-[2px]"
         >
-          <div className="gap-sm flex items-baseline justify-between">
-            <span className="text-body-sm truncate">{family.parent.title}</span>
-            <span className="text-micro text-ink-muted shrink-0">
-              the whole template
-            </span>
-          </div>
-          <div className="text-micro text-ink-muted mt-xxs">
-            {family.parent.kind} · {family.parent.license} ·{" "}
-            {family.parent.source}
+          <PreviewMedia
+            item={previewRef(family.parent)}
+            want="xs"
+            className="w-[160px] shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="gap-sm flex items-baseline justify-between">
+              <span className="text-body-sm truncate">
+                {family.parent.title}
+              </span>
+              <span className="text-micro text-ink-muted shrink-0">
+                the whole template
+              </span>
+            </div>
+            <div className="text-micro text-ink-muted mt-xxs">
+              {family.parent.kind} · {family.parent.license} ·{" "}
+              {family.parent.source}
+            </div>
           </div>
         </Link>
       ) : null}
@@ -175,24 +192,32 @@ export function RelationsSection({
               <li key={c.slug}>
                 <Link
                   href={`/vault/${c.slug}`}
-                  className="bg-surface-1 rounded-lg p-sm border-hairline-soft hover:border-hairline block h-full border transition-[transform,border-color] duration-[var(--duration-base)] ease-[var(--ease-out-expo)] hover:-translate-y-[2px]"
+                  className="bg-surface-1 rounded-lg p-sm border-hairline-soft hover:border-hairline gap-sm flex h-full border transition-[transform,border-color] duration-[var(--duration-base)] ease-[var(--ease-out-expo)] hover:-translate-y-[2px]"
                 >
-                  <div className="gap-sm flex items-baseline justify-between">
-                    <span className="text-body-sm truncate">{c.title}</span>
-                    <span className="text-micro text-ink-muted shrink-0">
-                      {c.trigger}
-                    </span>
-                  </div>
-                  {/* The two facts that make an extract findable again: where
-                      it lives in the archive, and which route shows it. */}
-                  <code className="text-ink-muted text-micro mt-xxs block truncate">
-                    {c.archive?.entry ?? "entry not recorded"}
-                  </code>
-                  {c.archive?.route ? (
-                    <div className="text-micro text-ink-muted mt-[2px]">
-                      route <span className="text-ink">{c.archive.route}</span>
+                  <PreviewMedia
+                    item={previewRef(c)}
+                    want="xs"
+                    className="w-[140px] shrink-0 self-start"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="gap-sm flex items-baseline justify-between">
+                      <span className="text-body-sm truncate">{c.title}</span>
+                      <span className="text-micro text-ink-muted shrink-0">
+                        {c.trigger}
+                      </span>
                     </div>
-                  ) : null}
+                    {/* The two facts that make an extract findable again: where
+                        it lives in the archive, and which route shows it. */}
+                    <code className="text-ink-muted text-micro mt-xxs block truncate">
+                      {c.archive?.entry ?? "entry not recorded"}
+                    </code>
+                    {c.archive?.route ? (
+                      <div className="text-micro text-ink-muted mt-[2px]">
+                        route{" "}
+                        <span className="text-ink">{c.archive.route}</span>
+                      </div>
+                    ) : null}
+                  </div>
                 </Link>
               </li>
             ))}

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { getItem } from "@/lib/vault-data";
 import { tagsOf } from "@/lib/types";
 import { CopyBundle } from "@/components/vault/copy-bundle";
+import { CopyNotes } from "@/components/vault/copy-notes";
+import { Notes } from "@/components/vault/notes";
 import {
   ArchiveCrumb,
   ArchiveEntry,
@@ -99,13 +101,14 @@ export default async function ItemPage({ params }: PageProps<"/vault/[slug]">) {
       </div>
 
       <div className="mt-xl gap-xl grid md:grid-cols-[1fr_260px]">
-        <section>
-          <h2 className="text-caption text-ink-muted mb-sm uppercase tracking-[0.14em]">
-            Notes
-          </h2>
-          <div className="text-body whitespace-pre-wrap">
-            {item.notes.trim() || "—"}
+        <section className="min-w-0">
+          <div className="mb-sm gap-sm flex items-center justify-between">
+            <h2 className="text-caption text-ink-muted uppercase tracking-[0.14em]">
+              Notes
+            </h2>
+            {item.notes.trim() ? <CopyNotes markdown={item.notes} /> : null}
           </div>
+          <Notes markdown={item.notes} />
 
           {scrollDriven ? (
             <p className="text-body-sm text-ink-muted mt-lg border-hairline-soft pt-lg border-t">

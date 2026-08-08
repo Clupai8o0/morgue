@@ -277,6 +277,16 @@ h3 {
   will-change: auto;
 }
 
+/* Preview loading ring. Transform only — a preview is loading precisely when
+   videos are decoding, which is the worst possible moment to ask the
+   compositor to repaint anything. See PreviewMedia for why the indicator also
+   carries a word. */
+@keyframes morgue-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Reduced motion
 

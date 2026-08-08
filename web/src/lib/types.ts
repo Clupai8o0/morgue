@@ -13,6 +13,14 @@ export type License = "own" | "mit" | "paid" | "unknown";
 export type ArchiveRole = "template" | "extract";
 
 /**
+ * A rung of the preview ladder produced by `pnpm renditions`, smallest first.
+ * Order matters — `previewSrc` walks this array — so it mirrors `LADDER` in
+ * bin/renditions.mjs and must be widened at the same time as that list.
+ */
+export type Rung = "xs" | "sm";
+export const RUNGS: Rung[] = ["xs", "sm"];
+
+/**
  * meta.json's optional `archive` block, verbatim as an author writes it.
  * `entry` and `route` are extract-only and live ONLY in the per-item record —
  * facets.json cannot carry them, which is why the detail page reads records.
@@ -60,6 +68,14 @@ export interface Facet {
   weight: Weight;
   kind: Kind;
   hasVideo: boolean;
+  /**
+   * Rungs of the preview ladder that exist for this item, smallest first —
+   * see `LADDER` in bin/renditions.mjs. ABSENT is a permanent state, not a
+   * migration: facets.json lives in R2 and versions independently of this app,
+   * so a payload built before the ladder existed will simply not have it and
+   * every consumer must fall back to the full-size preview.
+   */
+  rungs?: Rung[];
 
   /** `archive.name`, flattened to a string for the facet row. */
   archive?: string | null;
@@ -98,8 +114,16 @@ export interface VaultIndex {
  *
  * `role` and `relatedCount` are inherited but are facet-row conveniences and
  * are NOT written into records — read `relations` here, never those.
+ *
+ * `hasVideo` and `rungs` are OMITTED for a stronger reason: bin/build.mjs has
+ * never written them into a record. They are computed in the facets map, and a
+ * record carries `video` and `videoRungs` instead. Inheriting them declared two
+ * fields that are always `undefined` at runtime — a type that promises more
+ * than the payload delivers. Use `previewRef()` to hand a record to anything
+ * that wants the facet shape.
  */
-export interface Item extends Omit<Facet, "archive"> {
+export interface Item
+  extends Omit<Facet, "archive" | "hasVideo" | "rungs"> {
   source: string;
   sourceUrl: string | null;
   /** the delivery this was ingested from, when there is no product URL */
@@ -110,6 +134,8 @@ export interface Item extends Omit<Facet, "archive"> {
   notes: string;
   poster: string;
   video: string | null;
+  /** Same list as `Facet.rungs`; records always carry it, even when empty. */
+  videoRungs?: Rung[];
   href: string;
 
   archive?: ArchiveRef | null;
@@ -169,4 +195,54 @@ export function relationLabel(
     return n === 0 ? "template" : `${n} extract${n === 1 ? "" : "s"}`;
   }
   return `part of ${f.archive}`;
+}
+
+/**
+ * The minimum a surface needs to render a preview. A `Facet` satisfies it
+ * structurally; a record needs `previewRef()` because it stores the same two
+ * facts under different names.
+ */
+export interface PreviewRef {
+  slug: string;
+  hasVideo: boolean;
+  rungs?: Rung[];
+}
+
+/** Adapts a full record to the facet-shaped preview contract. */
+export function previewRef(item: Item): PreviewRef {
+  return {
+    slug: item.slug,
+    hasVideo: Boolean(item.video),
+    rungs: item.videoRungs,
+  };
+}
+
+/**
+ * Picks the preview file a surface should request.
+ *
+ * `want` is the LARGEST rung the surface is willing to use; the best available
+ * rung at or below it wins, and if the payload advertises none, the full-size
+ * preview is used. Never construct `preview-<rung>.mp4` by hand anywhere else —
+ * an item captured before `pnpm renditions` existed has no rungs at all, and
+ * guessing produces a 404 that presents as a hover which quietly does nothing.
+ *
+ * Returns null when the item has no video, which is a legal state:
+ * `kind: "reference"` items are a poster and notes.
+ */
+export function previewSrc(
+  f: PreviewRef,
+  want: Rung | "full" = "full",
+): string | null {
+  if (!f.hasVideo) return null;
+  const base = `/api/media/${f.slug}`;
+  if (want === "full") return `${base}/preview.mp4`;
+
+  const have = f.rungs ?? [];
+  // RUNGS is smallest-first, so scanning down from `want` finds the largest
+  // rung that is no bigger than the surface asked for.
+  const ceiling = RUNGS.indexOf(want);
+  for (let i = ceiling; i >= 0; i--) {
+    if (have.includes(RUNGS[i])) return `${base}/preview-${RUNGS[i]}.mp4`;
+  }
+  return `${base}/preview.mp4`;
 }

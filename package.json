@@ -6,6 +6,7 @@
   "description": "A private reference collection of UI components and web animations, with deterministic video capture.",
   "scripts": {
     "capture": "node bin/capture.mjs",
+    "renditions": "node bin/renditions.mjs",
     "build": "node bin/build.mjs",
     "check": "node bin/check.mjs",
     "serve": "node bin/serve.mjs",

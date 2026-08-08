@@ -16,6 +16,12 @@ const slugs = (await readdir(path.join(ROOT, SRC), { withFileTypes: true }))
   .filter((d) => d.isDirectory())
   .map((d) => d.name)
 
+// Kept in step with LADDER in bin/renditions.mjs by hand. Two names in two
+// files is the same shape as the controlled vocabulary living in both CLAUDE.md
+// and bin/survey.mjs — cheap to check, and importing across the bin/ scripts
+// for a two-element list would be worse.
+const RUNGS = ['xs', 'sm']
+
 const items = []
 for (const slug of slugs) {
   const dir = path.join(ROOT, SRC, slug)
@@ -64,10 +70,21 @@ for (const slug of slugs) {
     }
   }
 
+  // Which rungs of the preview ladder `pnpm renditions` actually produced. The
+  // app must never GUESS this: facets.json is R2-resident and versions
+  // independently of the deployed site, so a card that assumes preview-sm.mp4
+  // exists will silently 404 against a payload built before the ladder did —
+  // and a hover that quietly does nothing is the hardest kind of bug to see.
+  // Recorded, not derived.
+  const videoRungs = existsSync(path.join(outDir, 'preview.mp4'))
+    ? RUNGS.filter((r) => existsSync(path.join(outDir, `preview-${r}.mp4`)))
+    : []
+
   items.push({
     slug, ...meta, notes, exportFiles,
     poster: `media/${slug}/poster.webp`,
     video: existsSync(path.join(outDir, 'preview.mp4')) ? `media/${slug}/preview.mp4` : null,
+    videoRungs,
     href: `item/${slug}/index.html`,
   })
 }
@@ -241,6 +258,10 @@ const facets = items.map((it) => ({
   weight: it.weight,
   kind: it.kind,
   hasVideo: Boolean(it.video),
+  // ~20 bytes a row against the ~130-byte budget, and it buys the grid the
+  // right to ask for a 360px file instead of a 600px one. Omitted when empty
+  // for the same reason the archive fields are.
+  ...(it.videoRungs.length ? { rungs: it.videoRungs } : {}),
   // Three fields so a card can label and filter its family without fetching a
   // single record. Read off `relations`, never off meta.archive, so the facet
   // row and the record are incapable of disagreeing.
