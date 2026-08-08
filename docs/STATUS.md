@@ -129,16 +129,32 @@ landing page and a private vault — then the first real ingest.
 | `pnpm survey` / `pnpm extract` | 11 ranked candidates + coupling report |
 | `pnpm optimise --write` against `items/` | `livespot360-reveal` −91.6%, backed up first |
 | `web:dev` and `verify:web` agree on a port | both :3210; was :3000 vs :3210 |
+| Notes render as markdown, tables and all | 1 table / 7 rows / 3 code blocks on `blunt-template` |
+| Preview ladder — xs 200w, sm 360w | xs −85%, sm −61%; grid pulls 360×226 |
+| Extract previews in the relations strip | 3 thumbnails, all requesting `preview-xs.mp4` |
+| Preview loading state | held the response 4s in Playwright; appears, then clears on paint |
+| **Read-only share links** | **`pnpm verify:share` 24/24 against a production build** |
 
 Commands, all green on 2026-08-08:
 
 ```
-pnpm test        11/11 fixtures
-pnpm build       6 items → site/
-pnpm check       all item pages run          ← was 6/7, now clean
-pnpm web:build   compiles, lists ƒ Proxy (Middleware)
-pnpm verify:web  10/10 against web:dev on :3210
+pnpm test          11/11 fixtures
+pnpm build         6 items → site/
+pnpm check         all item pages run          ← was 6/7, now clean
+pnpm renditions    34 renditions, 17 items
+pnpm web:build     compiles, lists ƒ Proxy (Middleware)
+pnpm verify:web    10/10 against web:dev on :3210
+pnpm verify:share  24/24 against its own production server
 ```
+
+**`pnpm verify:share` is the first thing here that has ever run outside the
+local dev path.** It spawns `next start` with an injected `AUTH_SECRET` and
+dummy OAuth credentials, because `proxy.ts` fails open in development and a
+gate verified only there is verified in the mode where it does not run. It
+proves the wall is up without a session, that a share cookie opens the vault
+and is refused `/admin` and `/api/share`, that an item link cannot reach any
+other item or its media, and that forged, scope-escalated, malformed and
+expired tokens are all rejected.
 
 **`pnpm test` rebuilds `site/` from `fixtures/` and does not clean up.** Run
 `pnpm build` after it or the vault serves 11 fixture records instead of the real
@@ -148,6 +164,25 @@ other direction.
 Caveat on the R2 dry-run figure above: **a large share of it is orphaned fixture media.**
 `build.mjs` never deletes from `site/`, which is now the most consequential gap in the
 pipeline — see below.
+
+## Sharing — what it needs, and what it does without
+
+Read-only share links are the one feature deliberately built to work before the
+credentials land.
+
+| | Needs | Without it |
+|---|---|---|
+| Issue a link, redeem it, enforce scope, expire it | **`AUTH_SECRET` only** — `openssl rand -base64 32`, no vendor | nothing works; `/api/share` 503s and `/admin` says so |
+| List outstanding links, revoke one early | `DATABASE_URL` | links still work and are invisible; `/admin` says so in as many words |
+
+The token is signed and carries its own expiry, so validation is a hash rather
+than a query — Postgres stays out of the path of every page load and every
+media byte, which is the same reason the vault itself is not in Postgres.
+
+The cost, stated where it cannot be missed: **a signed token cannot be
+un-issued.** Revocation is checked at redemption and the cookie it mints lasts
+an hour, so revoking takes effect within an hour, not instantly. Rotating
+`AUTH_SECRET` is the break-glass and kills everything at once.
 
 ## Blocked on credentials
 

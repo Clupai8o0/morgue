@@ -5,6 +5,9 @@ import { tagsOf } from "@/lib/types";
 import { CopyBundle } from "@/components/vault/copy-bundle";
 import { CopyNotes } from "@/components/vault/copy-notes";
 import { Notes } from "@/components/vault/notes";
+import { ShareLink } from "@/components/vault/share-link";
+import { SharedBanner } from "@/components/vault/shared-banner";
+import { shareMode } from "@/lib/share-mode";
 import {
   ArchiveCrumb,
   ArchiveEntry,
@@ -38,23 +41,34 @@ export default async function ItemPage({ params }: PageProps<"/vault/[slug]">) {
   if (!item) notFound();
 
   const scrollDriven = item.trigger === "scroll";
+  const shared = await shareMode();
+
+  // An item-scoped share can reach exactly this page. Every route out of it —
+  // the vault index, the archive filter, sibling extracts — is refused by
+  // proxy.ts, so offering those links would be offering a dead end. A
+  // vault-scoped share keeps all of them, because all of them work.
+  const boxedIn = shared?.kind === "item";
 
   // One extra read per family member, on this route only. See relations.tsx.
   const family = await getFamily(item);
 
   return (
-    <main className="mx-auto w-full max-w-[1100px] px-lg py-xxl">
-      <div className="gap-sm flex flex-wrap items-baseline">
-        <Link
-          href="/vault"
-          className="text-micro text-ink-muted hover:text-ink transition-colors duration-[var(--duration-fast)]"
-        >
-          ← vault
-        </Link>
-        {item.relations?.archive ? (
-          <ArchiveCrumb archive={item.relations.archive} />
-        ) : null}
-      </div>
+    <>
+      {shared ? <SharedBanner scope={shared} /> : null}
+      <main className="mx-auto w-full max-w-[1100px] px-lg py-xxl">
+      {!boxedIn ? (
+        <div className="gap-sm flex flex-wrap items-baseline">
+          <Link
+            href="/vault"
+            className="text-micro text-ink-muted hover:text-ink transition-colors duration-[var(--duration-fast)]"
+          >
+            ← vault
+          </Link>
+          {item.relations?.archive ? (
+            <ArchiveCrumb archive={item.relations.archive} />
+          ) : null}
+        </div>
+      ) : null}
 
       <header className="mt-lg mb-xl">
         <h1 className="text-display-lg font-display">{item.title}</h1>
@@ -76,6 +90,14 @@ export default async function ItemPage({ params }: PageProps<"/vault/[slug]">) {
             — one paste an agent can act on. Origin travels with the code, so
             this is still answerable in six months.
           </p>
+          {/* Sharing the export bundle is the point of an item link, so the
+              bundle stays available to a shared viewer — only the ability to
+              mint further links is withheld. */}
+          {!shared ? (
+            <div className="mt-sm">
+              <ShareLink scope="item" slug={item.slug} />
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -135,8 +157,9 @@ export default async function ItemPage({ params }: PageProps<"/vault/[slug]">) {
         </aside>
       </div>
 
-      <RelationsSection item={item} family={family} />
-    </main>
+      {!boxedIn ? <RelationsSection item={item} family={family} /> : null}
+      </main>
+    </>
   );
 }
 

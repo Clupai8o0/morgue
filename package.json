@@ -15,6 +15,7 @@
     "fixtures:site": "MORGUE_SRC=fixtures node bin/build.mjs",
     "fixtures:check": "MORGUE_SRC=fixtures node bin/check.mjs",
     "verify:web": "node bin/verify-web.mjs",
+    "verify:share": "node bin/verify-share.mjs",
     "test": "pnpm fixtures:build && pnpm fixtures:capture && pnpm fixtures:site && pnpm fixtures:check",
     "web:dev": "pnpm --filter web dev",
     "web:build": "pnpm --filter web build",

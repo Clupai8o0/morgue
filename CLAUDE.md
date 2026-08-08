@@ -207,6 +207,27 @@ React `useEffect` works.
 10. **`pnpm verify:web` after touching web/.** A green `next build` says
     nothing about whether the page runs — the same lesson as rule 5.
 
+12. **Share access is an allowlist, and `pnpm verify:share` proves it.** A read-only
+    share cookie may reach only what `shareAllows()` in `web/src/lib/share.ts`
+    names — today `/vault*` and `/api/media/*` for a vault link, and exactly one
+    item plus its own media for an item link. Never convert it to a denylist:
+    forgetting to deny a new route hands a visitor something they should not
+    have, and routes appear faster than that list gets reread. `/admin` and
+    `/api/share` are additionally refused in `proxy.ts` before the allowlist is
+    consulted, so widening the allowlist alone cannot expose them.
+
+    Share tokens are signed with a key derived from `AUTH_SECRET` and carry
+    their own expiry, so they work with no database. That means **a link cannot
+    be un-issued** — revocation is checked when a link is *redeemed*, and the
+    cookie it mints is capped at `SESSION_MAX_SECONDS`, so revoking takes up to
+    an hour. Rotating `AUTH_SECRET` kills every outstanding link at once.
+
+    `pnpm verify:share` spawns its own **production** server with an injected
+    secret and dummy OAuth credentials, because `proxy.ts` fails open in
+    development and a gate verified only in dev is verified in the mode where
+    it does not run. Run it after touching `proxy.ts`, `lib/share.ts`, or
+    anything under `app/s/` or `app/api/share/`.
+
 ## Never commit the collection
 
 `items/`, `out/` and `site/` are gitignored, deliberately — third-party licensed source and

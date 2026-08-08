@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { VaultGrid } from "@/components/vault/vault-grid";
+import { ShareLink } from "@/components/vault/share-link";
+import { SharedBanner } from "@/components/vault/shared-banner";
 import { getFacets, getIndex } from "@/lib/vault-data";
+import { shareMode } from "@/lib/share-mode";
 
 export const metadata: Metadata = { title: "Vault" };
 
@@ -12,19 +15,30 @@ export const metadata: Metadata = { title: "Vault" };
 export const dynamic = "force-dynamic";
 
 export default async function VaultPage() {
-  const [facets, index] = await Promise.all([getFacets(), getIndex()]);
+  const [facets, index, shared] = await Promise.all([
+    getFacets(),
+    getIndex(),
+    shareMode(),
+  ]);
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] px-lg py-xxl">
-      <header className="mb-xl flex items-baseline justify-between gap-md">
+    <>
+      {shared ? <SharedBanner scope={shared} /> : null}
+      <main className="mx-auto w-full max-w-[1400px] px-lg py-xxl">
+      <header className="mb-xl flex flex-wrap items-baseline justify-between gap-md">
         <h1 className="text-caption text-ink-muted uppercase tracking-[0.14em]">
           Vault
         </h1>
-        {index ? (
-          <span className="text-micro text-ink-muted tabular-nums">
-            built {new Date(index.builtAt).toLocaleDateString()}
-          </span>
-        ) : null}
+        <div className="gap-sm flex items-center">
+          {index ? (
+            <span className="text-micro text-ink-muted tabular-nums">
+              built {new Date(index.builtAt).toLocaleDateString()}
+            </span>
+          ) : null}
+          {/* A shared viewer cannot mint links. /api/share refuses them anyway
+              — this only avoids offering a button that would 401. */}
+          {!shared ? <ShareLink scope="vault" /> : null}
+        </div>
       </header>
 
       {facets.length === 0 ? (
@@ -40,6 +54,7 @@ export default async function VaultPage() {
       ) : (
         <VaultGrid facets={facets} index={index} />
       )}
-    </main>
+      </main>
+    </>
   );
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { desc, eq } from "drizzle-orm";
 import { db, dbConfigured } from "@/db";
 import { waitlist, type Waitlist } from "@/db/schema";
+import { ShareAdmin } from "@/components/vault/share-admin";
 
 export const metadata: Metadata = { title: "Admin" };
 export const dynamic = "force-dynamic";
@@ -142,23 +143,36 @@ function Shell({
     <main className="mx-auto w-full max-w-[820px] px-lg py-xxl">
       <header className="mb-xl gap-md flex items-baseline justify-between">
         <h1 className="text-caption text-ink-muted uppercase tracking-[0.14em]">
-          Admin · waitlist
+          Admin
         </h1>
-        <div className="gap-md flex items-baseline">
+        <Link
+          href="/vault"
+          className="text-micro text-ink-muted hover:text-ink transition-colors"
+        >
+          vault →
+        </Link>
+      </header>
+
+      {/* Above the waitlist deliberately: an outstanding share link is live
+          access to the collection, which matters more than an unread signup.
+          Rendered on every branch of this page — including the no-database
+          one — because sharing has its own independent configuration and
+          "the waitlist is down" says nothing about whether links work. */}
+      <ShareAdmin />
+
+      <section>
+        <header className="mb-sm gap-md flex items-baseline justify-between">
+          <h2 className="text-caption text-ink-muted uppercase tracking-[0.14em]">
+            Waitlist
+          </h2>
           {count !== undefined ? (
             <span className="text-micro text-ink-muted tabular-nums">
               {pending} pending · {count} total
             </span>
           ) : null}
-          <Link
-            href="/vault"
-            className="text-micro text-ink-muted hover:text-ink transition-colors"
-          >
-            vault →
-          </Link>
-        </div>
-      </header>
-      {children}
+        </header>
+        {children}
+      </section>
     </main>
   );
 }

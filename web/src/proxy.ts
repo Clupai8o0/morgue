@@ -1,6 +1,12 @@
 import type { NextFetchEvent, NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { auth, authConfigured } from "@/auth";
+import {
+  SHARE_COOKIE,
+  SHARE_HEADER,
+  shareAllows,
+  verifyShareToken,
+} from "@/lib/share";
 
 /**
  * Route gate.
@@ -16,9 +22,16 @@ import { auth, authConfigured } from "@/auth";
  * Media is gated here, but media URLs are SIGNED in the media route — "may
  * this person see the page" and "here is a one-hour URL for this object" are
  * separate decisions.
+ *
+ * TWO WAYS IN, and they are not equivalent. An owner session (GitHub, against
+ * AUTH_ALLOWED_LOGINS) reaches everything. A share cookie reaches a read-only
+ * subset decided by `shareAllows`, which is an allowlist — /admin and
+ * /api/share are not on it and must never be. The share path is checked FIRST
+ * only when there is no owner session, so a signed-in owner never has their
+ * own access narrowed by a share cookie they happen to be carrying.
  */
 
-const PROTECTED = ["/vault", "/admin", "/api/media", "/api/vault"];
+const PROTECTED = ["/vault", "/admin", "/api/media", "/api/vault", "/api/share"];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -45,8 +58,51 @@ const gate = auth(function gated(req) {
   return NextResponse.redirect(url);
 });
 
+/**
+ * A valid share cookie for a path its scope allows.
+ *
+ * Returns the response to send, or null to mean "this is not a shared
+ * request — carry on with the owner gate". An INVALID or out-of-scope cookie
+ * also returns null rather than rejecting: the visitor may still be a signed-in
+ * owner, and a stale cookie must never lock the owner out of their own vault.
+ */
+function shareGate(req: NextRequest): NextResponse | null {
+  const token = req.cookies.get(SHARE_COOKIE)?.value;
+  if (!token) return null;
+
+  const result = verifyShareToken(token);
+  if (!result.ok) return null;
+  if (!shareAllows(result.payload.scope, req.nextUrl.pathname)) return null;
+
+  // Pass the scope down so pages can render the read-only banner and hide
+  // owner-only controls. Set on the REQUEST, not the response: a response
+  // header would be visible to the browser and is not readable by a Server
+  // Component, which is the thing that needs it.
+  const headers = new Headers(req.headers);
+  headers.set(
+    SHARE_HEADER,
+    result.payload.scope.kind === "vault"
+      ? "vault"
+      : `item:${result.payload.scope.slug}`,
+  );
+  return NextResponse.next({ request: { headers } });
+}
+
 export default function proxy(req: NextRequest, ctx: NextFetchEvent) {
   if (!isProtected(req.nextUrl.pathname)) return;
+
+  // Never reachable with a share cookie, at any stage, configured or not.
+  // Listed again here rather than relying on shareAllows alone: this is the
+  // one check that must survive somebody widening that allowlist.
+  const ownerOnly =
+    req.nextUrl.pathname === "/admin" ||
+    req.nextUrl.pathname.startsWith("/admin/") ||
+    req.nextUrl.pathname.startsWith("/api/share");
+
+  if (!ownerOnly) {
+    const shared = shareGate(req);
+    if (shared) return shared;
+  }
 
   if (!authConfigured()) {
     // Asymmetric on purpose. Production must fail closed: shipping with a
