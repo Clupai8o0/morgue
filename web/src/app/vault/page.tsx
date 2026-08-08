@@ -24,21 +24,24 @@ export default async function VaultPage() {
   return (
     <>
       {shared ? <SharedBanner scope={shared} /> : null}
+      {/* Pins itself top-right; rendered here rather than in the header so the
+          header's layout does not imply it belongs to the header. A shared
+          viewer cannot mint links — /api/share refuses them anyway, so this
+          only avoids offering a button that would 401. */}
+      {!shared ? <ShareLink scope="vault" maxWidth="max-w-[1400px]" /> : null}
       <main className="mx-auto w-full max-w-[1400px] px-lg py-xxl">
-      <header className="mb-xl flex flex-wrap items-baseline justify-between gap-md">
+      {/* The build date used to sit at the right of this row, which is exactly
+          where the pinned Share button lands — they overlapped. Only one thing
+          can own that corner, and it is the control. */}
+      <header className="mb-xl gap-sm flex flex-wrap items-baseline">
         <h1 className="text-caption text-ink-muted uppercase tracking-[0.14em]">
           Vault
         </h1>
-        <div className="gap-sm flex items-center">
-          {index ? (
-            <span className="text-micro text-ink-muted tabular-nums">
-              built {new Date(index.builtAt).toLocaleDateString()}
-            </span>
-          ) : null}
-          {/* A shared viewer cannot mint links. /api/share refuses them anyway
-              — this only avoids offering a button that would 401. */}
-          {!shared ? <ShareLink scope="vault" /> : null}
-        </div>
+        {index ? (
+          <span className="text-micro text-ink-muted tabular-nums">
+            · built {new Date(index.builtAt).toLocaleDateString()}
+          </span>
+        ) : null}
       </header>
 
       {facets.length === 0 ? (

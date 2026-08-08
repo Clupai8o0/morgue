@@ -1,11 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Mint a read-only share link and hand back the URL.
  *
- * Two decisions worth keeping:
+ * ── Why it is pinned top-right rather than sitting in the header ────────────
+ *
+ * Sharing applies to the whole page, not to a spot in it. Inline, the control
+ * had to be placed twice and it landed in two different spots — beside "built
+ * <date>" on the index, and under Copy for agent on a detail page — so it read
+ * as a different control on each. Pinned, there is one place it ever is, and
+ * it survives scrolling down a 4,000px notes page and deciding to share.
+ *
+ * `position: fixed` is safe here specifically because Lenis runs in native
+ * scroll mode: no wrapper/content transform, so no transformed ancestor to
+ * anchor against. If anyone ever switches Lenis to transform mode this button
+ * silently starts scrolling with the page.
+ *
+ * ── Two decisions worth keeping ─────────────────────────────────────────────
  *
  * The link is shown ONCE and never fetched again. The server does not store
  * the token — only its hash — so there is no endpoint that could re-display it
@@ -31,14 +44,43 @@ interface Minted {
   revocable: boolean;
 }
 
+/** iOS-style share glyph: an arrow leaving a tray. Reads at 16px, unlike a
+ *  three-node graph, whose connecting lines close up at this size. */
+function ShareIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 10V2.6" />
+      <path d="M5.4 5.2 8 2.6l2.6 2.6" />
+      <path d="M3.6 8.8v3.6a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V8.8" />
+    </svg>
+  );
+}
+
 export function ShareLink({
   scope,
   slug,
-  className = "",
+  maxWidth = "max-w-[1100px]",
 }: {
   scope: "vault" | "item";
   slug?: string;
-  className?: string;
+  /**
+   * The page's own container width. The button is fixed so it survives
+   * scrolling, but it must line up with the right edge of the CONTENT column
+   * rather than the viewport — on a wide monitor a viewport-pinned control
+   * floats in dead space with no relationship to the page. Passing the width
+   * in keeps it honest per page: the index is 1400 and a detail page is 1100.
+   */
+  maxWidth?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [hours, setHours] = useState(24 * 7);
@@ -47,6 +89,7 @@ export function ShareLink({
   const [minted, setMinted] = useState<Minted | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   async function create() {
     setBusy(true);
@@ -91,19 +134,56 @@ export function ShareLink({
     setLabel("");
   }
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className={`text-micro text-ink-muted hover:text-ink border-hairline-soft hover:border-hairline rounded-pill px-sm shrink-0 border py-[4px] transition-colors duration-[var(--duration-fast)] ${className}`}
-      >
-        share read-only
-      </button>
-    );
-  }
+  // Escape closes, and a click anywhere else closes. Both only while open, so
+  // the listeners are not sitting on every vault page doing nothing.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") reset();
+    };
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) reset();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [open]);
 
   return (
-    <div className="bg-surface-1 border-hairline-soft rounded-lg p-md mt-xs w-full max-w-[520px] border">
+    // Fixed so it survives scrolling, but laid out through a copy of the
+    // page's own container so it lands on the right edge of the CONTENT
+    // column, not the viewport. pointer-events-none on the full-width track
+    // is what stops an invisible bar across the top of the page swallowing
+    // clicks on everything beneath it.
+    <div className="pointer-events-none fixed inset-x-0 top-lg z-40 isolate">
+      <div className={`mx-auto w-full px-lg flex justify-end ${maxWidth}`}>
+        <div ref={rootRef} className="pointer-events-auto relative">
+          <button
+            onClick={() => (open ? reset() : setOpen(true))}
+            aria-label={
+              scope === "vault" ? "Share the whole vault" : "Share this item"
+            }
+            aria-expanded={open}
+            className="border-hairline-soft hover:border-hairline bg-canvas/70 text-ink-muted hover:text-ink rounded-pill gap-xxs px-sm flex items-center border py-[7px] backdrop-blur-[6px] transition-[color,border-color,transform] duration-[var(--duration-fast)] ease-[var(--ease-spring)] hover:scale-[1.04] active:scale-[0.97]"
+          >
+            <ShareIcon />
+            <span className="text-micro">Share</span>
+          </button>
+
+          {open ? <Panel /> : null}
+        </div>
+      </div>
+    </div>
+  );
+
+  function Panel() {
+  return (
+    // Anchored to the button rather than in flow: in flow it would stretch the
+    // flex row and drag the button off the right edge as it opened.
+    <div className="bg-surface-1 border-hairline-soft rounded-lg p-md mt-xs absolute right-0 top-full w-[min(520px,calc(100vw-2*var(--spacing-lg)))] border">
       <div className="mb-sm flex items-baseline justify-between">
         <h3 className="text-caption uppercase tracking-[0.14em]">
           {scope === "vault" ? "Share the whole vault" : "Share this item"}
@@ -201,4 +281,5 @@ export function ShareLink({
       ) : null}
     </div>
   );
+  }
 }

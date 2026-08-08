@@ -55,6 +55,10 @@ export default async function ItemPage({ params }: PageProps<"/vault/[slug]">) {
   return (
     <>
       {shared ? <SharedBanner scope={shared} /> : null}
+      {/* Pins itself top-right, same place on every vault surface. Sharing the
+          export bundle is the point of an item link, so the bundle above stays
+          available to a shared viewer — only minting further links is withheld. */}
+      {!shared ? <ShareLink scope="item" slug={item.slug} /> : null}
       <main className="mx-auto w-full max-w-[1100px] px-lg py-xxl">
       {!boxedIn ? (
         <div className="gap-sm flex flex-wrap items-baseline">
@@ -90,14 +94,6 @@ export default async function ItemPage({ params }: PageProps<"/vault/[slug]">) {
             — one paste an agent can act on. Origin travels with the code, so
             this is still answerable in six months.
           </p>
-          {/* Sharing the export bundle is the point of an item link, so the
-              bundle stays available to a shared viewer — only the ability to
-              mint further links is withheld. */}
-          {!shared ? (
-            <div className="mt-sm">
-              <ShareLink scope="item" slug={item.slug} />
-            </div>
-          ) : null}
         </div>
       </header>
 
