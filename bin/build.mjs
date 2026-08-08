@@ -22,6 +22,15 @@ const slugs = (await readdir(path.join(ROOT, SRC), { withFileTypes: true }))
 // for a two-element list would be worse.
 const RUNGS = ['xs', 'sm']
 
+// Finder droppings and editor state are not part of an item, and `site/` is what
+// bin/publish.mjs walks — so anything copied in here is bound for the R2 bucket and
+// nothing will ever remove it. Seven .DS_Store files were sitting inside
+// archives/deadlock-studios/out/ within a day of it being staged; a template unzipped on a
+// Mac arrives with them. Filtered at the copy rather than cleaned afterwards, because a
+// cleanup step is one somebody forgets to run.
+const JUNK = new Set(['.DS_Store', 'Thumbs.db', '.Spotlight-V100', '.Trashes', '__MACOSX'])
+const publishable = (src) => !JUNK.has(path.basename(src))
+
 const items = []
 for (const slug of slugs) {
   const dir = path.join(ROOT, SRC, slug)
@@ -30,8 +39,8 @@ for (const slug of slugs) {
   const notes = existsSync(path.join(dir, 'notes.md')) ? await readFile(path.join(dir, 'notes.md'), 'utf8') : ''
 
   // Publish media + the runnable item side by side.
-  await cp(outDir, path.join(SITE, 'media', slug), { recursive: true, force: true, filter: (s) => !s.includes('/frames') })
-  await cp(dir, path.join(SITE, 'item', slug), { recursive: true, force: true })
+  await cp(outDir, path.join(SITE, 'media', slug), { recursive: true, force: true, filter: (s) => !s.includes('/frames') && publishable(s) })
+  await cp(dir, path.join(SITE, 'item', slug), { recursive: true, force: true, filter: publishable })
 
   // Source text for the agent export bundle. Only the files meta.json actually
   // declares — an `unextracted` item may sit on 2,000 files and 35MB of JPEG,
@@ -212,7 +221,7 @@ for (const [prefix, dir] of Object.entries(VENDOR)) {
         console.warn(`  ! archive "${name}": no out/ — ${prefix}${name}/ will 404 in the built site. Build the archive's static export first.`)
         continue
       }
-      await cp(built, path.join(to, name), { recursive: true, force: true })
+      await cp(built, path.join(to, name), { recursive: true, force: true, filter: publishable })
     }
     continue
   }

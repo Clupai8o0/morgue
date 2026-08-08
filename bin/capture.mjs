@@ -112,6 +112,23 @@ const FAKE_CLOCK = () => {
 const DETACH_CLOCKS = () => {
   // GSAP's lag smoothing would skip our synthetic frames as if the machine had stalled.
   if (window.gsap) window.gsap.ticker.lagSmoothing(0)
+
+  // `Animation.currentTime` is the animation's OWN local time, not wall clock. For anything
+  // running since frame 0 the two are the same number, which is why assigning the absolute
+  // capture time worked for years and why this was never noticed.
+  //
+  // Anything BORN MID-CAPTURE is a different story. A CSS transition triggered by a click,
+  // a preloader fade, a ::view-transition — each starts at local time 0 at the moment it
+  // appears. Handing it the absolute clock pushes it straight past its own end. Measured on
+  // a 700ms fade born at t=3.4s: as an absolute seek it reports currentTime null and
+  // opacity 0 on the very first frame it exists — finished and garbage collected — so a
+  // fade is recorded as a jump cut. Birth-relative it runs 1 → 0.95 → 0.71 → 0.52 → 0.14.
+  //
+  // Anchoring on first sighting means anything alive at frame 0 gets birth 0 and is
+  // bit-for-bit unchanged, so this is not a behaviour change for the existing corpus's
+  // load-triggered items.
+  const birth = new WeakMap()
+
   window.__seek = (tSec) => {
     window.__vaultClock.step(tSec * 1000)
     for (const a of document.getAnimations()) {
@@ -120,7 +137,8 @@ const DETACH_CLOCKS = () => {
       // already control deterministically — pausing those freezes the effect while the page
       // keeps scrolling, which looks like a working capture and is not one.
       if (a.timeline !== document.timeline) continue
-      try { a.pause(); a.currentTime = tSec * 1000 } catch {}
+      if (!birth.has(a)) birth.set(a, tSec * 1000)
+      try { a.pause(); a.currentTime = Math.max(0, tSec * 1000 - birth.get(a)) } catch {}
     }
     if (window.ScrollTrigger) window.ScrollTrigger.update()
   }
@@ -201,10 +219,28 @@ async function capture(slug, { scale = 1, only = null } = {}) {
   //     run, so every item burned the full timeout. Poll on a timer instead.
   //  2. Framework code (Next/React) commonly signals readiness from inside a rAF callback,
   //     which for the same reason never fires. So pump the clock while we wait.
-  await page
+  //  3. THE OPTIONS OBJECT GOES THIRD. Playwright's signature is
+  //     `waitForFunction(pageFunction, arg, options)`. Passed second it becomes `arg`, and
+  //     both fixes above silently revert to the defaults they were written to replace —
+  //     30s instead of 8s, and polling:'raf', which the fake clock never drains, so the
+  //     predicate is evaluated exactly ONCE and never again. Measured: as-written 30006ms
+  //     for 1 evaluation; corrected 8003ms for 157. Items that set __ready synchronously
+  //     pass on that single poll, which is how this hid — but an item gating on
+  //     `document.fonts.ready` or `img.decode()` waited the full 30s, twice per capture,
+  //     and printed nothing.
+  const readyAt = Date.now()
+  const ready = await page
     .waitForFunction(() => { window.__vaultClock.step(0); return window.__ready === true },
-      { timeout: 8000, polling: 50 })
-    .catch(() => {})
+      null, { timeout: 8000, polling: 50 })
+    .then(() => true, () => false)
+  const readyMs = Date.now() - readyAt
+  // Never fatal — a `reference` item legitimately has nothing to signal. But never silent
+  // again either: the old `.catch(() => {})` is why 30s stalls went unnoticed for months.
+  if (!ready) {
+    process.stdout.write(
+      `  \x1b[33m! window.__ready never set (waited ${readyMs}ms) — recording whatever state the page reached\x1b[0m\n`,
+    )
+  }
   await page.waitForTimeout(cfg.settleMs ?? 300)
   await page.evaluate(DETACH_CLOCKS)
   // Some libraries finish layout inside a rAF; give them a few before frame 0.
