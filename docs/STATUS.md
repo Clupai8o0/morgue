@@ -1,11 +1,13 @@
 # Status
 
-Last updated: 2026-08-08.
+Last updated: 2026-08-09.
 
 Rationale for the architecture is in [DECISIONS.md](./DECISIONS.md).
-The next major change — multi-tenant accounts — is specified in
-[MULTI-TENANT.md](./MULTI-TENANT.md) and **not started**. Everything below
-describes the single-owner system as it stands.
+The major change in flight — multi-tenant accounts — is specified in
+[MULTI-TENANT.md](./MULTI-TENANT.md). **Phases 1 and 2 (identity) are built and
+verified; phases 3–7 are not started.** So the *auth* described below is the
+new one; everything about the *collection* still describes the single-owner
+system, because the tenancy boundary is phase 3.
 Measurements are in [FINDINGS.md](./FINDINGS.md).
 The session snapshot this was reconciled against is [HANDOFF.md](./HANDOFF.md).
 
@@ -137,8 +139,10 @@ landing page and a private vault — then the first real ingest.
 | Extract previews in the relations strip | 3 thumbnails, all requesting `preview-xs.mp4` |
 | Preview loading state | held the response 4s in Playwright; appears, then clears on paint |
 | **Read-only share links** | **`pnpm verify:share` 24/24 against a production build** |
+| **Accounts in Postgres; GitHub + Google + email/password** | **`pnpm verify:auth` 66/66 against a throwaway `initdb` cluster** |
+| **Lockout, session revocation, password reset, email verification** | same suite — reset and verification run end to end through the emailed link |
 
-Commands, all green on 2026-08-08:
+Commands, all green on 2026-08-09:
 
 ```
 pnpm test          11/11 fixtures
@@ -148,10 +152,12 @@ pnpm renditions    34 renditions, 17 items
 pnpm web:build     compiles, lists ƒ Proxy (Middleware)
 pnpm verify:web    10/10 against web:dev on :3210
 pnpm verify:share  24/24 against its own production server
+pnpm verify:auth   66/66 against its own production server AND its own Postgres
 ```
 
-**`pnpm verify:share` is the first thing here that has ever run outside the
-local dev path.** It spawns `next start` with an injected `AUTH_SECRET` and
+**`pnpm verify:share` was the first thing here that ever ran outside the
+local dev path, and `pnpm verify:auth` went further — it starts a real
+Postgres with `initdb` as well as a production server.** It spawns `next start` with an injected `AUTH_SECRET` and
 dummy OAuth credentials, because `proxy.ts` fails open in development and a
 gate verified only there is verified in the mode where it does not run. It
 proves the wall is up without a session, that a share cookie opens the vault

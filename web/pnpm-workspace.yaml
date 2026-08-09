@@ -1,4 +1,14 @@
+# This file exists only because pnpm treats `web/` as its own root whenever a
+# command runs with cwd=web — which `pnpm --filter web <script>` does — and its
+# verify-deps-before-run check then reads allowBuilds from HERE, not from the
+# repo root. `esbuild` was left as the literal placeholder string, which is not
+# a boolean, so the moment the lockfile changed the check failed with
+# ERR_PNPM_IGNORED_BUILDS even when run from the root. That is the second half
+# of CLAUDE.md rule 7.
+#
+# Keep esbuild in step with the root pnpm-workspace.yaml. sharp and
+# unrs-resolver stay false: neither is a dependency of web/.
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
   sharp: false
   unrs-resolver: false

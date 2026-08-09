@@ -1,6 +1,21 @@
 # Multi-tenant morgue — implementation brief
 
-Status: **design, nothing built.** Written 2026-08-09 to be picked up cold.
+Status: **phases 1 and 2 are built and verified. 3–7 are still design.**
+Written 2026-08-09 to be picked up cold; phase status updated the same day.
+
+> [!NOTE]
+> **Decisions taken since this was written** (§13):
+> 1. **Ingest: option C**, reference-first. Unchanged from the recommendation.
+> 2. **Private by default.** No public profiles and no discovery surface.
+>    Sharing is the existing expiring-link mechanism, extended so a user can
+>    share components *they made themselves*. That keeps the redistribution
+>    problem closed: nothing is visible to anyone without a link its owner
+>    issued.
+> 3. Consequently **the existing paid collection stays owner-only**, as §2
+>    requires.
+>
+> Decisions 4 (free or paid) and 5 (GitHub OAuth previews) are still open and
+> are not blocking phase 3.
 
 Read [CLAUDE.md](../CLAUDE.md) first — the folder contract and rules 1–12 still
 apply and this document does not supersede them. [STATUS.md](./STATUS.md) is
@@ -149,6 +164,20 @@ passwords. Required, not optional: a slow hash (`argon2id`, or `bcrypt` cost ≥
 expiring tokens, and rate limiting on both sign-in and reset. `IP_HASH_SALT`
 already exists for the waitlist limiter and the same primitive applies.
 
+> **As built:** `scrypt` from Node core, at OWASP's N=2^16 / r=8 / p=2, not
+> argon2id. Every argon2 binding for Node is a native module, and on Vercel
+> that means prebuilt binaries for the right libc, a `serverExternalPackages`
+> entry, and a dependency that can break the build on a Node upgrade. scrypt is
+> OWASP's named fallback, needs nothing installed, and the stored form is
+> `scrypt$N$r$p$salt$hash` — parameters in the record, so cost can be raised
+> without invalidating existing passwords and an `argon2id$` branch can be
+> added later with both coexisting. The first configuration OWASP lists
+> (N=2^17, p=1) was rejected on memory: 128 MiB per concurrent hash, on the one
+> endpoint where an attacker picks the concurrency.
+>
+> Everything else in this paragraph shipped as written. See `lib/password.ts`,
+> `lib/auth-tokens.ts` and `lib/auth-limit.ts`.
+
 **Auth.js v5 + Credentials + adapter is a known sharp edge.** The Credentials
 provider does not persist a session through a database adapter — it is
 JWT-only. Mixing it with OAuth providers on a database session strategy is the
@@ -282,8 +311,8 @@ Each ends at a verification gate. Do not start the next until the gate is green.
 
 | # | Phase | Gate |
 |---|---|---|
-| 1 | Users/accounts/sessions schema + adapter; migrate owner to a row; delete `AUTH_ALLOWED_LOGINS` | `pnpm verify:web` green; owner signs in via GitHub against a real row |
-| 2 | Google provider + Credentials with argon2, verification, reset, rate limiting; account-linking policy | new `pnpm verify:auth` covering all three providers, linking, and lockout |
+| 1 ✅ | Users/accounts/sessions schema + adapter; `AUTH_ALLOWED_LOGINS` deleted; `pnpm user` CLI creates the first account | `pnpm verify:web` 10/10, `pnpm verify:share` 24/24, `pnpm web:build` lists `ƒ Proxy (Middleware)` |
+| 2 ✅ | Google provider + Credentials, verification, reset, rate limiting; account-linking policy in `lib/link-policy.ts` | **`pnpm verify:auth` 66/66** against a throwaway `initdb` cluster and a production `next start` |
 | 3 | Tenancy boundary: `ownerId` everywhere, R2 re-key, `/api/media` derives user from session | **second-account isolation test** — the §2 constraint, automated |
 | 4 | Ingest for option C (+ quotas) | a second account creates a `reference` item end to end |
 | 5 | Invites: token, `/invite/<token>`, invite-only `signIn` callback | invite is single-use, expires, and cannot be replayed as a share token |
@@ -292,15 +321,15 @@ Each ends at a verification gate. Do not start the next until the gate is green.
 
 ## 13. Decisions needed from you before Phase 3
 
-1. **Ingest: A, B or C?** (§7) Everything downstream depends on it.
-2. **Does anyone ever see anyone else's vault?** "Easily share them" could mean
-   private-by-default with share links (already built, small change) or a public
-   profile/discovery surface (much larger, and re-opens the redistribution
-   problem for *their* paid uploads).
-3. **Is the existing paid collection owner-only forever?** This brief assumes
-   yes. If not, say so explicitly, because it changes §4 and §10.
+1. ~~**Ingest: A, B or C?**~~ **Decided: C**, reference-first (§7).
+2. ~~**Does anyone ever see anyone else's vault?**~~ **Decided: no.** Private
+   by default; no profiles, no discovery. Sharing stays the expiring-link
+   mechanism, extended so a user can share components they made themselves.
+3. ~~**Is the existing paid collection owner-only forever?**~~ **Decided:
+   yes**, which follows from 2.
 4. **Free, or paid?** Quotas and billing are the difference between a hobby
-   deployment and a service with a support burden.
+   deployment and a service with a support burden. **Still open.** Not
+   blocking phase 3, but quotas arrive with phase 4 and want an answer by then.
 5. **GitHub OAuth previews.** An OAuth App has one callback URL and Vercel
    previews get a fresh URL each deploy, so previews cannot sign in without
    `AUTH_REDIRECT_PROXY_URL`. Worth settling while touching auth anyway.

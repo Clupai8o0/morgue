@@ -6,7 +6,7 @@ Read [CLAUDE.md](../CLAUDE.md) first — it is the folder contract and it is
 authoritative. This file is a snapshot; that one is the rules.
 
 > [!IMPORTANT]
-> **The next piece of work is the multi-tenant pivot, and its brief is
+> **The multi-tenant pivot is under way and its brief is
 > [MULTI-TENANT.md](./MULTI-TENANT.md).** Many accounts, each with a private
 > vault; Google + GitHub + email/password; waitlist-gated invites; an admin
 > dashboard. It reverses `DECISIONS.md` § "Waitlist, not signup" on purpose.
@@ -14,6 +14,14 @@ authoritative. This file is a snapshot; that one is the rules.
 > `lib/vault-data.ts` — and read §2 first, because the 12 items currently in the
 > vault are paid third-party templates and the tenancy boundary is a licensing
 > obligation, not a permission check.
+>
+> **Phases 1 and 2 landed on 2026-08-09.** Identity is in Postgres,
+> `AUTH_ALLOWED_LOGINS` is deleted, and `pnpm verify:auth` proves the lot
+> against a throwaway `initdb` cluster (66/66). **Phase 3 — the tenancy
+> boundary — is next, and it is the one with the licensing constraint behind
+> it.** The sections of this file below that predate the pivot describe a
+> single-owner system; where they disagree with MULTI-TENANT.md, that file
+> wins.
 
 [STATUS.md](./STATUS.md) and [FINDINGS.md](./FINDINGS.md) were reconciled this
 session and are accurate as of this date.
@@ -175,13 +183,21 @@ re-run afterwards to prove it.
 ## Blocked on credentials — unchanged
 
 Empty in `web/.env.local`: `DATABASE_URL`, `IP_HASH_SALT`, `RESEND_API_KEY`,
-`AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`, `AUTH_SECRET`. R2's three are not in the
-file at all. Non-empty: `NOTIFY_TO`, `NOTIFY_FROM`, `MORGUE_DATA_SOURCE`,
-`AUTH_ALLOWED_LOGINS`, `OPENAI_API_KEY`.
+`AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`, `AUTH_SECRET`, and now
+`AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET`. Non-empty: `NOTIFY_TO`, `NOTIFY_FROM`,
+`MORGUE_DATA_SOURCE`, `AUTH_URL`, `OPENAI_API_KEY`. `AUTH_ALLOWED_LOGINS` was
+removed from the file on 2026-08-09 because it no longer does anything.
 
-Consequence: **nothing outside the local dev path has ever run.** A production
+Consequence: **the deployed path still has no credentials.** A production
 `next start` returns 503 on `/vault` — correctly, failing closed (rule 9).
 `pnpm verify:web` passes only against `web:dev`, which fails open by design.
+
+What is no longer true: "nothing outside the local dev path has ever run".
+`pnpm verify:share` and `pnpm verify:auth` both start a **production** server
+with injected secrets, and the latter also starts a **real Postgres**. Sign-in,
+lockout, revocation and password reset have all executed end to end against
+one. What has never run is any of it against *Neon*, or any OAuth round trip
+to a real GitHub or Google app.
 
 Vercel project and DNS (`morgue.clupai.com`, plus `api.morgue.clupai.com`
 rewritten to `/api/*`) are still unconfigured.

@@ -15,6 +15,13 @@
       "when": 1786193367037,
       "tag": "0001_clean_morph",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786251242165,
+      "tag": "0002_multi_tenant_identity",
+      "breakpoints": true
     }
   ]
 }

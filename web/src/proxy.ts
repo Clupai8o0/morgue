@@ -23,18 +23,23 @@ import {
  * this person see the page" and "here is a one-hour URL for this object" are
  * separate decisions.
  *
- * TWO WAYS IN, and they are not equivalent. An owner session (GitHub, against
- * AUTH_ALLOWED_LOGINS) reaches everything. A share cookie reaches a read-only
- * subset decided by `shareAllows`, which is an allowlist — /admin and
- * /api/share are not on it and must never be. The share path is checked FIRST
- * only when there is no owner session, so a signed-in owner never has their
- * own access narrowed by a share cookie they happen to be carrying.
+ * TWO WAYS IN, and they are not equivalent. A signed-in session (against a
+ * row in `users` — see src/auth.ts) reaches everything its role allows. A
+ * share cookie reaches a read-only subset decided by `shareAllows`, which is
+ * an allowlist — /admin and /api/share are not on it and must never be. The
+ * share path is checked FIRST only when there is no session, so a signed-in
+ * user never has their own access narrowed by a share cookie they happen to be
+ * carrying.
  */
 
 const PROTECTED = ["/vault", "/admin", "/api/media", "/api/vault", "/api/share"];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+function isAdminPath(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
 const IS_PROD =
@@ -52,10 +57,19 @@ const IS_PROD =
  * `auth(...)` directly.
  */
 const gate = auth(function gated(req) {
-  if (req.auth) return;
-  const url = new URL("/signin", req.nextUrl.origin);
-  url.searchParams.set("from", req.nextUrl.pathname);
-  return NextResponse.redirect(url);
+  if (!req.auth) {
+    const url = new URL("/signin", req.nextUrl.origin);
+    url.searchParams.set("from", req.nextUrl.pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // Being signed in is not being an admin. Checked here AND in the route, the
+  // same doubling /api/share already uses: a page that manages other people's
+  // accounts should not depend on one matcher pattern being right. 404 rather
+  // than 403 so an ordinary user cannot confirm the route exists.
+  if (isAdminPath(req.nextUrl.pathname) && req.auth.user?.role !== "admin") {
+    return new NextResponse("Not found", { status: 404 });
+  }
 });
 
 /**
@@ -95,8 +109,7 @@ export default function proxy(req: NextRequest, ctx: NextFetchEvent) {
   // Listed again here rather than relying on shareAllows alone: this is the
   // one check that must survive somebody widening that allowlist.
   const ownerOnly =
-    req.nextUrl.pathname === "/admin" ||
-    req.nextUrl.pathname.startsWith("/admin/") ||
+    isAdminPath(req.nextUrl.pathname) ||
     req.nextUrl.pathname.startsWith("/api/share");
 
   if (!ownerOnly) {
@@ -116,7 +129,9 @@ export default function proxy(req: NextRequest, ctx: NextFetchEvent) {
     }
     console.warn(
       `[proxy] auth not configured — allowing ${req.nextUrl.pathname} in ` +
-        `development only. Set AUTH_GITHUB_ID / AUTH_GITHUB_SECRET / AUTH_SECRET.`,
+        `development only. Set AUTH_SECRET plus one provider: ` +
+        `AUTH_GITHUB_ID/SECRET, AUTH_GOOGLE_ID/SECRET, or DATABASE_URL for ` +
+        `email and password. Then create an account with \`pnpm user add\`.`,
     );
     return;
   }

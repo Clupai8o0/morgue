@@ -223,12 +223,41 @@ React `useEffect` works.
    The LRU in `lib/player-pool.ts` is ported verbatim from `bin/grid.html`;
    do not "modernise" it into React state.
 
-9. **An empty `AUTH_ALLOWED_LOGINS` denies everyone.** Deliberate. A missing
-   variable in production must lock the door, not open it. Likewise an
-   unconfigured production deploy returns 503 rather than serving the vault.
+9. **A missing configuration must lock the door, not open it.** An
+   unconfigured production deploy returns 503 rather than serving the vault;
+   development fails open so a fresh clone runs with no secrets.
+
+    This used to read "an empty `AUTH_ALLOWED_LOGINS` denies everyone". That
+    variable is **gone** as of the multi-tenant pivot — accounts are rows in
+    `users` and the first one is made with `pnpm user add`, so with no
+    `DATABASE_URL` there are no accounts and nobody signs in. The principle is
+    unchanged and now holds structurally rather than by a value being empty.
+    Do not reintroduce an env-var allowlist beside the table; two answers to
+    "may this person in" is one too many.
 
 10. **`pnpm verify:web` after touching web/.** A green `next build` says
     nothing about whether the page runs — the same lesson as rule 5.
+
+13. **`pnpm verify:auth` after touching anything under identity.** That is
+    `auth.ts`, `proxy.ts`, `lib/users.ts`, `lib/link-policy.ts`,
+    `lib/password.ts`, `lib/auth-limit.ts`, `lib/auth-tokens.ts`,
+    `db/schema.ts`, or `app/api/account/*`.
+
+    It starts a **throwaway Postgres cluster with `initdb`** and a production
+    `next start` against it, then signs in over real HTTP. That is not
+    ceremony: every interesting auth bug is a query returning the wrong row —
+    a suspended user who still gets in, a lockout counting the wrong column, a
+    reset token that works twice — and none of it is visible against a mock.
+    It has already caught one: an `eq(a) && isNull(b)` where drizzle needed
+    `and(a, b)`, which made "verify this address" mean "verify every
+    unverified address in the table". The test that caught it seeds a
+    *bystander* row, because a whole-table update and a correct one look
+    identical when the table holds one row.
+
+    This is why `src/db/index.ts` chooses a driver by hostname. The Neon HTTP
+    driver cannot speak to a cluster you started yourself, so with it as the
+    only driver this harness could not exist. Neon URLs still take the Neon
+    path in production.
 
 12. **Share access is an allowlist, and `pnpm verify:share` proves it.** A read-only
     share cookie may reach only what `shareAllows()` in `web/src/lib/share.ts`

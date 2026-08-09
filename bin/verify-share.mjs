@@ -10,8 +10,15 @@
 // proxy fails open in development. This injects an AUTH_SECRET and DUMMY
 // GitHub credentials so the gate runs its real code path. The dummy
 // credentials never make an OAuth round trip; `authConfigured()` only checks
-// that they are present, and AUTH_ALLOWED_LOGINS is set to a login nobody
-// holds so this run can share but can never sign in.
+// that they are present.
+//
+// DATABASE_URL is left EMPTY, and that is now what makes this run unable to
+// sign in. Before the multi-tenant pivot the same job was done by setting
+// AUTH_ALLOWED_LOGINS to a login nobody held; that variable no longer exists,
+// and its replacement is a row in `users` — with no database there are no
+// rows, so the owner gate is shut for structural reasons rather than by a
+// deliberately-wrong value. Sharing needs only AUTH_SECRET, so it still works.
+// Auth against a real database is bin/verify-auth.mjs's job.
 //
 // WHY `next start` AND NOT `next dev`. proxy.ts is deliberately ASYMMETRIC —
 // development fails open, production fails closed — so a gate verified only in
@@ -76,7 +83,6 @@ async function boot() {
     AUTH_SECRET: SECRET,
     AUTH_GITHUB_ID: 'verify-share-dummy',
     AUTH_GITHUB_SECRET: 'verify-share-dummy',
-    AUTH_ALLOWED_LOGINS: 'nobody',
     DATABASE_URL: '',
   }
 

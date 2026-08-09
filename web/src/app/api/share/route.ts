@@ -38,12 +38,14 @@ async function owner() {
   if (!authConfigured()) {
     // Development with no OAuth app configured. proxy.ts already fails open
     // here (and closed in production), so this mirrors it rather than
-    // inventing a second policy.
-    return process.env.NODE_ENV === "production" ? null : { login: "dev" };
+    // inventing a second policy. The sentinel is not a uuid on purpose: it
+    // must be recognisable in the links inventory as "issued by a machine with
+    // no auth configured", not mistaken for a real account.
+    return process.env.NODE_ENV === "production" ? null : { id: "dev-unauthenticated" };
   }
   const session = await auth();
-  const login = (session?.user as { login?: string } | undefined)?.login;
-  return login ? { login } : null;
+  const id = session?.user?.id;
+  return id ? { id } : null;
 }
 
 export async function POST(req: Request) {
@@ -99,7 +101,11 @@ export async function POST(req: Request) {
         scope: kind,
         slug: kind === "item" ? slug! : null,
         label: label || null,
-        createdBy: who.login,
+        // The users.id uuid, not a display name. Phase 3 turns this into a
+        // real foreign key when share links gain an owner dimension; recording
+        // the id now means that migration is a type change, not a lookup
+        // against names that may no longer be unique.
+        createdBy: who.id,
         expiresAt: new Date(payload.exp * 1000),
       });
       recorded = true;

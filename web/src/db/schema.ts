@@ -3,21 +3,42 @@ import {
   text,
   timestamp,
   uuid,
+  integer,
   index,
+  uniqueIndex,
+  primaryKey,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import type { AdapterAccountType } from "next-auth/adapters";
 
 /**
- * The entire database. Two tables, and that is deliberate.
+ * The database.
  *
- * The vault is NOT in Postgres. Items are built from items/ on disk into
- * static JSON and served from R2 — browsing never touches a database. Putting
- * the collection here would mean a second source of truth that drifts from
- * the folder contract, and would defeat the point of the capture pipeline
- * being a filesystem API.
+ * ── What changed, and why the old comment is gone ───────────────────────────
  *
- * So Postgres holds only the things that genuinely need transactional state:
- * who asked for access, which CLI tokens are live, and which share links have
- * been handed out.
+ * This file used to open by saying the vault is NOT in Postgres — items are
+ * built from items/ on disk into static JSON, browsing never touches a
+ * database. That was correct for exactly one user, who owns the filesystem and
+ * can run `pnpm build`. It stops being true the moment a second person has a
+ * vault, because they cannot. See docs/MULTI-TENANT.md § 5.
+ *
+ * As of the multi-tenant pivot the split is:
+ *
+ *   - IDENTITY lives here. Who exists, what they may do, whether they are
+ *     still allowed in. That is transactional state and always was.
+ *   - The OWNER'S COLLECTION still comes from items/ through the capture
+ *     pipeline. The folder contract in CLAUDE.md is unchanged.
+ *   - Everyone ELSE'S collection will live here too (`vaultItems`, phase 3).
+ *     It does not exist yet and this file does not pretend it does.
+ *
+ * ── Tables that need no explanation on sight ────────────────────────────────
+ *
+ * `sessions` is defined and migrated but NEVER READ, because the session
+ * strategy is JWT (see src/auth.ts). It exists because @auth/drizzle-adapter
+ * builds its own default `session` table when one is not supplied, and that
+ * default declares `userId` as `text` referencing our `uuid` — a type mismatch
+ * that would surface only if something ever touched it. Supplying a correct
+ * table is cheaper than relying on nobody switching strategies.
  *
  * `shareLinks` is the one table the app runs WITHOUT. Share tokens are signed
  * and carry their own expiry (see lib/share.ts), so issuing and validating a
@@ -26,7 +47,173 @@ import {
  * link before it expires. When DATABASE_URL is absent, links still work and
  * the admin page says plainly that they cannot be listed or individually
  * revoked.
+ *
+ * Identity has no such fallback and must not grow one. With no database there
+ * are no users, and with no users nobody signs in — that is rule 9 (fail
+ * closed) expressed as a schema rather than as an env var.
  */
+
+/* ─── Identity ──────────────────────────────────────────────────────────── */
+
+/**
+ * The five TS property names Auth.js reaches for — `id`, `name`, `email`,
+ * `emailVerified`, `image` — are fixed by @auth/drizzle-adapter, which does
+ * `.values(user)` with objects it builds itself. The DB column names are ours,
+ * hence snake_case throughout. Renaming a *property* here breaks OAuth
+ * sign-in at runtime and nowhere else; renaming a *column* is just a
+ * migration.
+ *
+ * Emails are stored lowercased. Normalisation happens in each provider's
+ * `profile()` callback rather than here, because the adapter looks a user up
+ * by email BEFORE any callback of ours runs — see the note in src/auth.ts.
+ */
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name"),
+    email: text("email").notNull().unique(),
+
+    // Auth.js semantics: a timestamp, not a boolean. Null means unverified.
+    // OAuth sign-ins set it (the provider did the verifying); a credentials
+    // sign-up leaves it null until the emailed link is opened, and auth.ts
+    // refuses to issue a session while it is null.
+    emailVerified: timestamp("email_verified", { withTimezone: true, mode: "date" }),
+    image: text("image"),
+
+    // Null for OAuth-only accounts. Its presence is what makes the credentials
+    // provider willing to consider this user at all.
+    passwordHash: text("password_hash"),
+
+    // user | admin. Text rather than a pg enum for the same reason
+    // waitlist.status is: a third role should be a code change.
+    role: text("role").notNull().default("user"),
+    // active | suspended.
+    status: text("status").notNull().default("active"),
+
+    /**
+     * Bumped on password change and on suspension. The JWT carries the value
+     * it was minted with, and auth.ts compares the two — so revocation costs
+     * one integer instead of a session table on the read path. It is not
+     * instant: see SESSION_RECHECK_SECONDS in src/auth.ts for the honest lag.
+     */
+    sessionVersion: integer("session_version").notNull().default(0),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  },
+  (t) => [
+    // Belt and braces over storing lowercase. The plain unique constraint on
+    // the column is exact-match, so it would happily accept
+    // "Person@Example.com" alongside "person@example.com" — two accounts, one
+    // human, and an account-linking policy that can no longer tell. This
+    // functional index is the one that actually forbids it.
+    uniqueIndex("users_email_lower_idx").on(sql`lower(${t.email})`),
+    index("users_created_idx").on(t.createdAt),
+  ],
+);
+
+/**
+ * OAuth links. Property names here are dictated by Auth.js down to the
+ * snake_case ones (`refresh_token`, `expires_at`, …) — those are the provider
+ * response fields verbatim, and the adapter spreads the response object
+ * straight in. They look inconsistent because they are not ours to name.
+ */
+export const accounts = pgTable(
+  "accounts",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").$type<AdapterAccountType>().notNull(),
+    provider: text("provider").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    refresh_token: text("refresh_token"),
+    access_token: text("access_token"),
+    expires_at: integer("expires_at"),
+    token_type: text("token_type"),
+    scope: text("scope"),
+    id_token: text("id_token"),
+    session_state: text("session_state"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.provider, t.providerAccountId] }),
+    index("accounts_user_idx").on(t.userId),
+  ],
+);
+
+/** Defined, migrated, never read. See the file header. */
+export const sessions = pgTable("sessions", {
+  sessionToken: text("session_token").primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expires: timestamp("expires", { withTimezone: true, mode: "date" }).notNull(),
+});
+
+/**
+ * Single-use tokens. Auth.js owns this table for its Email provider, and we
+ * borrow it for the two flows credentials sign-in needs, distinguished by a
+ * prefix on `identifier`:
+ *
+ *   verify:<email>   email verification after sign-up
+ *   reset:<email>    password reset
+ *
+ * A prefix rather than a `purpose` column so the adapter's own use of the
+ * table (bare email as identifier) keeps working untouched, and so a
+ * verification token can never be redeemed as a reset token: the lookup is by
+ * the whole identifier, not by the email.
+ *
+ * The token column stores a SHA-256 of what was emailed, never the value
+ * itself — a database dump must not hand over the ability to take over an
+ * account. Consumption is a DELETE, which is what makes it single-use.
+ */
+export const verificationTokens = pgTable(
+  "verification_tokens",
+  {
+    identifier: text("identifier").notNull(),
+    token: text("token").notNull(),
+    expires: timestamp("expires", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.identifier, t.token] }),
+    // The composite primary key indexes (identifier, token), which cannot
+    // serve a lookup by token alone — and a lookup by token alone is the only
+    // one a redemption can do, because the link in the email deliberately does
+    // not carry the address it belongs to.
+    index("verification_tokens_token_idx").on(t.token),
+  ],
+);
+
+/**
+ * Failed sign-in attempts, for lockout. One row per failure, pruned on write.
+ *
+ * Postgres rather than an in-memory counter because serverless instances do
+ * not share memory: a limiter that lives in a module-scope Map protects one
+ * lambda from one attacker and nothing else. Both dimensions are recorded
+ * because they stop different attacks — per-email stops credential stuffing
+ * against one account, per-IP stops one host spraying many accounts — and a
+ * limiter with only the first is trivially defeated by rotating the target.
+ *
+ * `ipHash` is hashed with IP_HASH_SALT, the same primitive the waitlist
+ * limiter already uses: enough to recognise a repeat caller, not enough to be
+ * personal data with a retention obligation.
+ */
+export const authAttempts = pgTable(
+  "auth_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email"),
+    ipHash: text("ip_hash"),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("auth_attempts_email_idx").on(t.email, t.at),
+    index("auth_attempts_ip_idx").on(t.ipHash, t.at),
+  ],
+);
+
+/* ─── Everything that was already here ──────────────────────────────────── */
 
 export const waitlist = pgTable(
   "waitlist",
@@ -115,6 +302,9 @@ export const shareLinks = pgTable(
   ],
 );
 
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type Account = typeof accounts.$inferSelect;
 export type Waitlist = typeof waitlist.$inferSelect;
 export type CliToken = typeof cliTokens.$inferSelect;
 export type ShareLink = typeof shareLinks.$inferSelect;

@@ -99,14 +99,32 @@ possibly-infringing uploads a personal liability. Letting approved users browse
 *this* collection is worse still: redistributing paid components to
 non-licensees, which is precisely what the repo was structured to avoid.
 
+> [!IMPORTANT]
+> **Reversed on 2026-08-09** — deliberately, and only the first half. morgue is
+> becoming multi-tenant: many accounts, each with a private vault. See
+> [MULTI-TENANT.md](./MULTI-TENANT.md). The quotas/ToS/DMCA burden named above
+> is accepted as the price.
+>
+> The second half is **not** reversed and cannot be. This collection stays
+> owner-only; vaults are private by default with no discovery surface, and the
+> tenancy boundary lives in the storage key and a `NOT NULL` owner column
+> rather than in query logic. The paragraph above is why.
+
 ## Auth fails closed in production, open in development
 
-An empty `AUTH_ALLOWED_LOGINS` denies everyone. An unconfigured production
-deploy returns 503 rather than serving the vault. Development allows through
-with a warning so a fresh clone runs with no secrets.
+An unconfigured production deploy returns 503 rather than serving the vault.
+Development allows through with a warning so a fresh clone runs with no
+secrets.
 
 The asymmetry is the point: a missing environment variable in production should
 lock the door, never open it.
+
+> **Amended 2026-08-09.** This used to lead with "an empty
+> `AUTH_ALLOWED_LOGINS` denies everyone". That variable is gone; accounts are
+> rows in `users` and the first is created with `pnpm user add`. The rule now
+> holds structurally rather than by a value being empty — no database means no
+> accounts means no sign-in — which is strictly harder to get wrong than
+> remembering to leave a string blank.
 
 ## The grid never runs the code it displays
 
