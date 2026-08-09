@@ -47,6 +47,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import pg from 'pg'
+import { quietenNodeWarnings } from './lib/test-stack.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -95,14 +96,9 @@ registerHooks({
   },
 })
 
-// One-time noise from importing .ts under a package.json with no "type".
-// Adding "type": "module" to web/package.json to silence it would change how
-// Next resolves every file in the app, which is a large change to quieten a
-// warning.
-process.removeAllListeners('warning')
-process.on('warning', (w) => {
-  if (!/MODULE_TYPELESS_PACKAGE_JSON/.test(`${w.name} ${w.message}`)) console.warn(w.stack)
-})
+// Shared with bin/verify-web.mjs — see the note there on why the code, not
+// just the message, has to be matched.
+quietenNodeWarnings()
 const PORT = Number(process.env.PORT ?? 3218)
 const PGPORT = Number(process.env.PGPORT ?? 55432)
 const BASE = `http://127.0.0.1:${PORT}`
@@ -600,6 +596,61 @@ section('7 · account linking (policy, against this database)')
   )
   await sql.query(`update users set status = 'active' where id = $1`, [adaId])
 
+  // Linking a SECOND provider while signed in — the flow that makes one human
+  // with a work GitHub and a personal Google end up with one account.
+  {
+    let asked = false
+    const connect = (o) =>
+      policy.decideOAuthSignIn({
+        provider: 'google',
+        providerAccountId: 'goog-new',
+        email: 'a-completely-different@example.com',
+        isEmailVerifiedByProvider: async () => { asked = true; return false },
+        ...o,
+      })
+
+    is(
+      'signed out, an unknown address is refused',
+      why(await connect({})),
+      'NoAccount',
+    )
+    is(
+      'signed in, the SAME address links to the current account',
+      why(await connect({ currentUserId: adaId })),
+      'allow',
+    )
+    check('and the provider is not asked to verify it', !asked)
+
+    // The account is spoken for by someone else: refuse rather than steal it.
+    const other = await seed('other@example.com')
+    await sql.query(
+      `insert into accounts (user_id, type, provider, provider_account_id) values ($1,'oauth','google','goog-taken')`,
+      [other],
+    )
+    is(
+      'a provider account linked to someone else cannot be taken over',
+      why(await connect({ currentUserId: adaId, providerAccountId: 'goog-taken' })),
+      'AlreadyLinked',
+    )
+    is(
+      'and its real owner still signs in with it',
+      why(await policy.decideOAuthSignIn({
+        provider: 'google', providerAccountId: 'goog-taken',
+        email: 'other@example.com', isEmailVerifiedByProvider: no,
+      })),
+      'allow',
+    )
+
+    await sql.query(`update users set status = 'suspended' where id = $1`, [adaId])
+    is(
+      'a suspended account cannot connect a provider either',
+      why(await connect({ currentUserId: adaId })),
+      'Suspended',
+    )
+    await sql.query(`update users set status = 'active' where id = $1`, [adaId])
+    await sql.query('delete from accounts where provider_account_id = $1', ['goog-new'])
+  }
+
   is(
     'google reports verification through email_verified',
     await policy.providerVerifiedEmail('google', null, { email_verified: true }, ADA),
@@ -637,6 +688,63 @@ section('8 · password hashing')
 
   const { rows } = await sql.query('select password_hash from users where email = $1', [ADMIN])
   check('nothing plaintext reaches the database', !rows[0].password_hash.includes(PW))
+}
+
+// ── 9. Nobody can unlink their way out of their own vault ───────────────────
+section('9 · disconnecting a sign-in method')
+{
+  const users = await import(path.join(ROOT, 'web/src/lib/users.ts'))
+  const policyMod = await import(path.join(ROOT, 'web/src/lib/link-policy.ts'))
+  const link = (id, provider, pid) =>
+    sql.query(
+      `insert into accounts (user_id, type, provider, provider_account_id) values ($1,'oauth',$2,$3)`,
+      [id, provider, pid],
+    )
+
+  // Only a GitHub link and no password: removing it strands the account.
+  const only = await seed('only-oauth@example.com', { password: null })
+  await link(only, 'github', 'gh-only')
+  let r = await users.unlinkProvider(only, 'github')
+  is('the LAST sign-in method cannot be removed', r.ok === false && r.reason, 'last-method')
+  is('and it is still there', (await users.listLinkedProviders(only)).join(), 'github')
+
+  // Two providers: one may go, the second may not.
+  const two = await seed('two-oauth@example.com', { password: null })
+  await link(two, 'github', 'gh-two')
+  await link(two, 'google', 'goog-two')
+  is('with two connected, one can be removed', (await users.unlinkProvider(two, 'github')).ok, true)
+  r = await users.unlinkProvider(two, 'google')
+  is('but not the one that is left', r.ok === false && r.reason, 'last-method')
+
+  // A password counts as a method, so the only provider may go.
+  const withPw = await seed('oauth-plus-password@example.com')
+  await link(withPw, 'github', 'gh-pw')
+  is(
+    'a password counts, so the only provider can be disconnected',
+    (await users.unlinkProvider(withPw, 'github')).ok,
+    true,
+  )
+  is('leaving the password behind', (await policyMod.signInMethods(withPw)).total, 1)
+
+  r = await users.unlinkProvider(withPw, 'google')
+  is('disconnecting something never connected is refused', r.ok === false && r.reason, 'not-linked')
+}
+
+// ── 10. The account API is the signed-in user's own, and nobody else's ──────
+section('10 · account API')
+{
+  const anon = await get('/api/account/me')
+  check('is closed without a session', anon.status >= 400 || String(anon.headers.get('location')).includes('/signin'), String(anon.status))
+
+  const s = await signInWithPassword(ADMIN, PW)
+  const mine = await fetch(`${BASE}/api/account/me`, { headers: { cookie: s.session ?? '' } })
+  is('opens with one', mine.status, 200)
+  const body = await mine.json()
+  is('and returns the caller, not a requested id', body.email, ADMIN)
+  check('reporting what they can sign in with', Array.isArray(body.providers) && body.hasPassword === true)
+
+  const page = await get('/account', s.session)
+  check('the account page opens for a signed-in user', page.status < 400, String(page.status))
 }
 
 console.log(`\n${pass}/${pass + fail} passed\n`)

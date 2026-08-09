@@ -331,13 +331,38 @@ Each ends at a verification gate. Do not start the next until the gate is green.
 | 6 | Admin dashboard: users, invites, storage, takedown | suspend kills a live session within one request |
 | 7 | ToS, AUP, DMCA contact, privacy note | — |
 
-## 13a. The three that phase 3 actually forces
+## 13a. Phase 3's three decisions — ANSWERED 2026-08-09
+
+All three are settled. What follows is the decision, then the original
+reasoning kept for whoever asks why.
+
+| | Decision |
+|---|---|
+| **A. Where the owner's vault is read from** | **Postgres is the source of truth for every user, including the owner. A per-user `u/<id>/data/facets.json` is regenerated into R2 on WRITE.** One write model, and the database stays off the read path. |
+| **B. Can an admin see inside another vault** | **No. Disable-only, by owner + slug, without rendering.** Written into `/privacy` and `/terms` as a promise to users, so it is now a commitment and not just an implementation detail. |
+| **C. Share tokens** | **`v2` carries the owner; `v1` is rejected outright.** No link has ever been issued from a deployment, so there is nothing to keep working. |
+
+**What B costs, stated plainly.** A takedown notice has to identify the item
+precisely enough to disable without anyone looking at it. There is no
+"browse the reported vault and find it" path, and adding one later would
+falsify a published privacy policy — which is a much more expensive change
+than adding the feature would have been. That is the trade, taken knowingly.
+
+**What A implies for `bin/`.** `build.mjs` already produces exactly this
+artefact for one vault; phase 3 generalises it to N and moves the trigger from
+"the owner ran a command" to "a row changed". `publish.mjs` gains the
+`u/<ownerId>/` prefix — and per §10 there is nothing to migrate, so this is
+just how the first publish is written.
+
+### The original reasoning
+
+
 
 §13's list was written before phase 1. With ingest and privacy settled, and
 with §10 now knowing that nothing has been published yet, these are what is
 left — and the second one is not in §13 at all.
 
-**A. Where does the OWNER'S vault get read from?**
+**A. Where does the OWNER'S vault get read from?** — decided: option three below.
 
 §5 puts other people's items in `vaultItems`. The owner's 12 come from
 `items/` through `pnpm build` as static JSON. Three ways to end that split:
@@ -352,7 +377,7 @@ The third is the recommendation. It is what `bin/build.mjs` already does,
 generalised from one vault to N, and it keeps the grid's twelve-video budget
 away from a database round trip.
 
-**B. Can an admin see inside another user's vault?**
+**B. Can an admin see inside another user's vault?** — decided: no, disable-only.
 
 Not in §13, and phase 3 forces it, because `/api/media` must derive the user
 segment from the session (§4.1). §9's takedown path needs an admin to action a
@@ -369,7 +394,7 @@ read everything.
 Recommendation: **disable-only for launch.** It is the smaller promise and it
 can be widened later; the reverse is not true.
 
-**C. Do share tokens carry an owner, or get a version bump?**
+**C. Do share tokens carry an owner, or get a version bump?** — decided: reject `v1`.
 
 Rule 12 and §4.4 both say a token must name the vault it belongs to. Because
 **no link has ever been issued from a deployment** (§10), `v2` can be made

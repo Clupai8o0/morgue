@@ -22,6 +22,11 @@ authoritative. This file is a snapshot; that one is the rules.
 > it.** The sections of this file below that predate the pivot describe a
 > single-owner system; where they disagree with MULTI-TENANT.md, that file
 > wins.
+>
+> **A second brief now exists: [LOCAL-MODE.md](./LOCAL-MODE.md)** — open-sourcing
+> morgue so a designer can run it locally with one command, no accounts, no
+> cloud services. Design only, nothing built, written to be handed to another
+> agent. It pulls in the opposite direction from MULTI-TENANT.md and says so.
 
 [STATUS.md](./STATUS.md) and [FINDINGS.md](./FINDINGS.md) were reconciled this
 session and are accurate as of this date.
@@ -38,7 +43,7 @@ merge in the repo's life. Working tree clean, both branches pushed to
 |---|---|
 | items | 6 · `items/` **6.9 MB** (was 62 MB) |
 | archives | 1 (`blunt-main`) · `archives/` 43 MB |
-| fixtures | 11 (8 original + 3 MIT showcase) |
+| fixtures | 11 · every one `license: "own"` — checked 2026-08-09, not "3 MIT" as this line used to say |
 | `out/` 409 MB · `site/` 64 MB | both regenerable |
 
 | slug | kind | archive | on disk |

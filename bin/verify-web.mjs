@@ -6,15 +6,94 @@
 // channel: 'chrome' uses the installed Google Chrome rather than Playwright's
 // bundled Chromium, which matters because bundled Chromium ships without the
 // proprietary H.264 decoder our previews are encoded with.
+//
+// WHY THIS NOW BRINGS ITS OWN SERVER AND ITS OWN DATABASE.
+//
+// It used to run against `pnpm web:dev` on :3210. That worked only because
+// web/.env.local had no auth credentials in it: `authConfigured()` was false,
+// proxy.ts fails open in development, and /vault rendered for anyone. The day
+// those variables were filled in, the dev server started gating /vault
+// correctly and this harness landed on /signin and reported that the grid had
+// no cards — the product working, the test wrong.
+//
+// So it now signs in for real: a throwaway Postgres, one seeded account, a
+// production `next start`, and a credentials sign-in whose cookie is handed to
+// Playwright. Two things improve as a side effect. It exercises the PRODUCTION
+// build, which is what a visitor gets, and it no longer depends on whatever
+// happens to be in .env.local.
+//
+//   pnpm verify:web                 self-contained
+//   BASE=http://… pnpm verify:web   against a server you already have, with
+//                                   whatever session that server needs
 
 import { chromium } from 'playwright'
+import {
+  freshSecret,
+  quietenNodeWarnings,
+  signInWithPassword,
+  startPostgres,
+  startServer,
+} from './lib/test-stack.mjs'
 
-const BASE = process.env.BASE ?? 'http://localhost:3210'
+quietenNodeWarnings()
+
+const PORT = Number(process.env.PORT ?? 3216)
+const PGPORT = Number(process.env.PGPORT ?? 55436)
+const EXTERNAL = process.env.BASE
+
 const results = []
 const ok = (name, pass, detail) => {
   results.push({ name, pass, detail })
   console.log(`${pass ? '  ok  ' : ' FAIL '} ${name}${detail ? ` — ${detail}` : ''}`)
 }
+
+let pgStack = null
+let server = null
+let BASE = EXTERNAL
+let sessionCookie = null
+
+if (!EXTERNAL) {
+  console.log('starting a throwaway Postgres and a production server …')
+  pgStack = await startPostgres({ port: PGPORT })
+  const secret = freshSecret()
+  server = await startServer({
+    port: PORT,
+    env: {
+      DATABASE_URL: pgStack.url,
+      AUTH_SECRET: secret,
+      AUTH_TRUST_HOST: 'true',
+      AUTH_URL: `http://127.0.0.1:${PORT}`,
+      AUTH_SESSION_RECHECK_SECONDS: '0',
+      // No OAuth apps: credentials alone is enough to get a session, and
+      // leaving them out keeps this run from depending on anything external.
+      AUTH_GITHUB_ID: '', AUTH_GITHUB_SECRET: '',
+      AUTH_GOOGLE_ID: '', AUTH_GOOGLE_SECRET: '',
+      RESEND_API_KEY: '',
+      MORGUE_DATA_SOURCE: 'local',
+      NODE_ENV: 'production',
+    },
+  })
+  BASE = server.base
+
+  const { hashPassword } = await import('../web/src/lib/password.ts')
+  const PW = 'verify web harness password'
+  await pgStack.sql.query(
+    `insert into users (email, name, role, status, password_hash, email_verified)
+     values ($1,'Verify','admin','active',$2,now())`,
+    ['verify-web@example.com', await hashPassword(PW)],
+  )
+
+  const signedIn = await signInWithPassword(BASE, 'verify-web@example.com', PW)
+  if (!signedIn.session) {
+    console.error('could not sign in to the harness server; aborting')
+    server.stop(); pgStack.stop(); process.exit(1)
+  }
+  sessionCookie = signedIn.session
+}
+
+const cleanup = () => { server?.stop(); pgStack?.stop() }
+process.on('exit', cleanup)
+process.on('SIGINT', () => { cleanup(); process.exit(130) })
 
 let browser
 try {
@@ -26,6 +105,27 @@ try {
 }
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+
+// The vault is gated. Replay the cookie the HTTP sign-in just earned rather
+// than driving the sign-in form: this harness is about whether the grid runs,
+// and the form has its own suite in bin/verify-auth.mjs.
+if (sessionCookie) {
+  await ctx.addCookies(
+    sessionCookie.split('; ').map((pair) => {
+      const i = pair.indexOf('=')
+      return {
+        name: pair.slice(0, i),
+        value: pair.slice(i + 1),
+        domain: '127.0.0.1',
+        path: '/',
+        httpOnly: true,
+        secure: false,
+        sameSite: 'Lax',
+      }
+    }),
+  )
+}
+
 const page = await ctx.newPage()
 
 const errors = []
@@ -128,6 +228,7 @@ ok('magnetic displaces on hover', before !== after, `${before} → ${after}`)
 ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | ') || 'clean')
 
 await browser.close()
+cleanup()
 
 const failed = results.filter((r) => !r.pass)
 console.log(`\n${results.length - failed.length}/${results.length} passed`)

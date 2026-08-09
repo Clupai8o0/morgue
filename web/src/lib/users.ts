@@ -68,6 +68,46 @@ export async function findLinkedUser(
   return rows[0]?.user ?? null;
 }
 
+/** Which OAuth providers this account can sign in with, e.g. ["github"]. */
+export async function listLinkedProviders(userId: string): Promise<string[]> {
+  if (!dbConfigured()) return [];
+  const rows = await db()
+    .select({ provider: accounts.provider })
+    .from(accounts)
+    .where(eq(accounts.userId, userId));
+  // Distinct in code rather than SQL: the set is one or two rows, and a
+  // provider appearing twice would be a bug worth seeing rather than folding
+  // away in a query.
+  return [...new Set(rows.map((r) => r.provider))].sort();
+}
+
+/**
+ * Removes one OAuth link. Returns false — changing nothing — when it would
+ * leave the account with no way back in.
+ *
+ * The guard is the whole point. Disconnecting the only provider on an account
+ * with no password is a self-inflicted lockout with no recovery path except
+ * the CLI, and it is the obvious thing to click when tidying up.
+ */
+export async function unlinkProvider(
+  userId: string,
+  provider: string,
+): Promise<{ ok: true } | { ok: false; reason: "last-method" | "not-linked" }> {
+  const [user, providers] = await Promise.all([
+    findUserById(userId),
+    listLinkedProviders(userId),
+  ]);
+  if (!providers.includes(provider)) return { ok: false, reason: "not-linked" };
+
+  const remaining = providers.length - 1 + (user?.passwordHash ? 1 : 0);
+  if (remaining < 1) return { ok: false, reason: "last-method" };
+
+  await db()
+    .delete(accounts)
+    .where(and(eq(accounts.userId, userId), eq(accounts.provider, provider)));
+  return { ok: true };
+}
+
 export type Refusal =
   | "no-account"
   | "suspended"

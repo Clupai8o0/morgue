@@ -8,6 +8,8 @@ The major change in flight — multi-tenant accounts — is specified in
 verified; phases 3–7 are not started.** So the *auth* described below is the
 new one; everything about the *collection* still describes the single-owner
 system, because the tenancy boundary is phase 3.
+Open-sourcing it for local use is specified in
+[LOCAL-MODE.md](./LOCAL-MODE.md) — design only, nothing built.
 Measurements are in [FINDINGS.md](./FINDINGS.md).
 The session snapshot this was reconciled against is [HANDOFF.md](./HANDOFF.md).
 

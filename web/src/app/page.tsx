@@ -307,9 +307,17 @@ requestAnimationFrame = (cb) => queue.set(id++, cb)   // drains only when we ste
 
       <footer className="border-hairline-soft py-xxl text-micro text-ink-muted gap-md flex flex-wrap justify-between border-t">
         <span>morgue · a private reference collection for motion on the web</span>
-        <Link href="/styleguide" className="hover:text-ink transition-colors">
-          style guide
-        </Link>
+        <span className="gap-md flex flex-wrap">
+          <Link href="/privacy" className="hover:text-ink transition-colors">
+            privacy
+          </Link>
+          <Link href="/terms" className="hover:text-ink transition-colors">
+            terms
+          </Link>
+          <Link href="/styleguide" className="hover:text-ink transition-colors">
+            style guide
+          </Link>
+        </span>
       </footer>
     </main>
   );

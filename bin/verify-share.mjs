@@ -189,9 +189,18 @@ console.log(`\nverifying share links against ${BASE} (production build, auth con
     const media = await get('/api/media/blunt-template/poster.webp', cookie)
     opened(media) ? ok('opens media', String(media.status)) : bad('opens media', String(media.status))
 
-    // The two that must never open.
+    // The ones that must never open.
     const admin = await get('/admin', cookie)
     refused(admin) ? ok('is REFUSED /admin', String(admin.status)) : bad('is REFUSED /admin', String(admin.status))
+
+    // A read-only visitor must not reach the controls that decide how the
+    // vault's owner signs in. Both the page and the API, because the page
+    // being gated says nothing about the endpoint behind it.
+    const account = await get('/account', cookie)
+    refused(account) ? ok('is REFUSED /account', String(account.status)) : bad('is REFUSED /account', String(account.status))
+
+    const accountApi = await get('/api/account/me', cookie)
+    refused(accountApi) ? ok('is REFUSED /api/account/me', String(accountApi.status)) : bad('is REFUSED /api/account/me', String(accountApi.status))
 
     const mint = await fetch(`${BASE}/api/share`, {
       method: 'POST', redirect: 'manual',

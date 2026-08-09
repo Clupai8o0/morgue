@@ -238,6 +238,16 @@ React `useEffect` works.
 10. **`pnpm verify:web` after touching web/.** A green `next build` says
     nothing about whether the page runs — the same lesson as rule 5.
 
+    It **brings its own Postgres and its own production server** and signs in,
+    rather than running against `pnpm web:dev`. It used to do the latter, and
+    that only worked because `web/.env.local` had no auth credentials in it:
+    `authConfigured()` was false, `proxy.ts` fails open in development, and
+    `/vault` rendered for anyone. The day those variables were filled in, the
+    dev server started gating `/vault` correctly and the harness reported that
+    the grid had no cards — the product working and the test wrong. A test
+    whose pass depends on a secret being absent is not testing what it claims.
+    `BASE=…` still points it at a server you already have.
+
 13. **`pnpm verify:auth` after touching anything under identity.** That is
     `auth.ts`, `proxy.ts`, `lib/users.ts`, `lib/link-policy.ts`,
     `lib/password.ts`, `lib/auth-limit.ts`, `lib/auth-tokens.ts`,

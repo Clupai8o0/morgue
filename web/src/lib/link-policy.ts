@@ -1,5 +1,11 @@
 import { dbConfigured } from "@/db";
-import { admissionProblem, findLinkedUser, findUserByEmail } from "@/lib/users";
+import {
+  admissionProblem,
+  findLinkedUser,
+  findUserByEmail,
+  findUserById,
+  listLinkedProviders,
+} from "@/lib/users";
 
 /**
  * Who is allowed through an OAuth sign-in, and what happens when the same
@@ -39,6 +45,13 @@ export interface OAuthSignInInput {
   /** Already lowercased by the provider's profile() callback. */
   email: string;
   /**
+   * The users.id of whoever is ALREADY signed in, if anyone. This is what
+   * turns "sign in with GitHub" into "connect GitHub to the account I am
+   * looking at", and it is the only way to attach a provider whose email
+   * differs from the account's.
+   */
+  currentUserId?: string | null;
+  /**
    * Injected rather than called inline so the policy can be tested without a
    * network, and so the expensive check happens ONLY in the branch that needs
    * it — a returning user whose account is already linked never pays for it.
@@ -53,25 +66,68 @@ export async function decideOAuthSignIn(
   //    CLAUDE.md rule 9, expressed where it now lives.
   if (!dbConfigured()) return refuse("Configuration");
 
-  // 2. A provider that shares no address gives us nothing to match on.
-  if (!input.email) return refuse("NoEmail");
+  const linked = await findLinkedUser(input.provider, input.providerAccountId);
+
+  // 2. CONNECTING a provider to the account you are already signed into.
+  //
+  //    This is the case that makes "one human, three sign-in buttons, one
+  //    account" work when the addresses differ — a GitHub account under a
+  //    work address, a Google account under a personal one. @auth/core links
+  //    it for us once we allow it through (handle-login.js: `if (user)` →
+  //    linkAccount), and it is the flow Auth.js's own comments call the safe
+  //    one, because the person has already authenticated as this account.
+  //
+  //    Note what is deliberately NOT required here: a provider-verified
+  //    email. Rule 5 below needs it because an unverified address is how a
+  //    stranger claims YOUR account. Here the direction is reversed — you are
+  //    handing a provider account access to your own vault — so the only
+  //    person a mistake hurts is the one making it.
+  if (input.currentUserId) {
+    if (linked && linked.id !== input.currentUserId) return refuse("AlreadyLinked");
+    const me = await findUserById(input.currentUserId);
+    return admissionDecision(me);
+  }
 
   // 3. Already linked. The provider proved this identity when the link was
   //    made; only admission is still in question.
-  const linked = await findLinkedUser(input.provider, input.providerAccountId);
   if (linked) return admissionDecision(linked);
 
-  // 4. Not linked, and nobody owns this address. There is no self-service
+  // 4. A provider that shares no address gives us nothing to match on. Checked
+  //    after the two link lookups: a returning user whose provider has since
+  //    stopped releasing an email should still get in.
+  if (!input.email) return refuse("NoEmail");
+
+  // 5. Not linked, and nobody owns this address. There is no self-service
   //    sign-up: an account exists because an admin made it or an invite was
   //    claimed.
   const existing = await findUserByEmail(input.email);
   if (!existing) return refuse("NoAccount");
 
-  // 5. Not linked, but the address is spoken for. This is the takeover-shaped
+  // 6. Not linked, but the address is spoken for. This is the takeover-shaped
   //    case — link only on a provider-verified address.
   if (!(await input.isEmailVerifiedByProvider())) return refuse("UnverifiedEmail");
 
   return admissionDecision(existing);
+}
+
+/**
+ * Everything this account can sign in with. Used by the account page and, more
+ * importantly, by the guard that stops someone unlinking their way out of
+ * their own vault.
+ */
+export interface SignInMethods {
+  providers: string[];
+  hasPassword: boolean;
+  total: number;
+}
+
+export async function signInMethods(userId: string): Promise<SignInMethods> {
+  const [user, links] = await Promise.all([
+    findUserById(userId),
+    listLinkedProviders(userId),
+  ]);
+  const hasPassword = Boolean(user?.passwordHash);
+  return { providers: links, hasPassword, total: links.length + (hasPassword ? 1 : 0) };
 }
 
 function admissionDecision(user: Parameters<typeof admissionProblem>[0]): SignInDecision {

@@ -327,16 +327,19 @@ const config: NextAuthConfig = {
       // nothing left for a policy to add.
       if (account.provider === "credentials") return true;
 
+      const email = normaliseEmail(String(user?.email ?? profile?.email ?? ""));
+
       const decision = await decideOAuthSignIn({
         provider: account.provider,
         providerAccountId: account.providerAccountId,
-        email: normaliseEmail(String(user?.email ?? profile?.email ?? "")),
+        email,
+        currentUserId: await signedInUserId(),
         isEmailVerifiedByProvider: () =>
           providerVerifiedEmail(
             account.provider,
             typeof account.access_token === "string" ? account.access_token : null,
             profile,
-            normaliseEmail(String(user?.email ?? profile?.email ?? "")),
+            email,
           ),
       });
 
@@ -404,3 +407,28 @@ const config: NextAuthConfig = {
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth(config);
+
+/**
+ * Who is signed in RIGHT NOW, read during the OAuth callback.
+ *
+ * This is what makes "one human, three sign-in buttons, one account" work.
+ * @auth/core already links a provider to the session user when one exists —
+ * handle-login.js takes the `if (user)` branch and calls linkAccount — but our
+ * signIn callback runs first, and without this it would refuse a provider
+ * whose email does not match any account and the link would never happen.
+ *
+ * The signIn callback is not given the session, so it has to be fetched. That
+ * is a second Auth.js invocation inside the first, which is safe because it
+ * runs the `session` action rather than the `signIn` one: the jwt callback
+ * fires, the signIn callback does not, so there is no recursion. Any failure
+ * means "treat this as a fresh sign-in", which is the conservative answer —
+ * the worst case is a link that has to be made from /account instead.
+ */
+async function signedInUserId(): Promise<string | null> {
+  try {
+    const session = await auth();
+    return session?.user?.id || null;
+  } catch {
+    return null;
+  }
+}

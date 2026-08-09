@@ -32,7 +32,20 @@ import {
  * carrying.
  */
 
-const PROTECTED = ["/vault", "/admin", "/api/media", "/api/vault", "/api/share"];
+const PROTECTED = [
+  "/vault",
+  "/admin",
+  "/account",
+  "/api/media",
+  "/api/vault",
+  "/api/share",
+  // NOT all of /api/account. `reset` and `verify` under it are deliberately
+  // public — a locked-out person has no session to authenticate with, and
+  // gating the way back in on being signed in is a loop. Only `me` is
+  // protected, and it is listed rather than the prefix so that adding a new
+  // public sibling cannot silently open a private one, or vice versa.
+  "/api/account/me",
+];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -110,7 +123,12 @@ export default function proxy(req: NextRequest, ctx: NextFetchEvent) {
   // one check that must survive somebody widening that allowlist.
   const ownerOnly =
     isAdminPath(req.nextUrl.pathname) ||
-    req.nextUrl.pathname.startsWith("/api/share");
+    req.nextUrl.pathname.startsWith("/api/share") ||
+    // Somebody holding a read-only link must never reach the controls that
+    // change how the vault's owner signs in.
+    req.nextUrl.pathname === "/account" ||
+    req.nextUrl.pathname.startsWith("/account/") ||
+    req.nextUrl.pathname.startsWith("/api/account/me");
 
   if (!ownerOnly) {
     const shared = shareGate(req);
