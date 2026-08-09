@@ -1,142 +1,121 @@
-# Handoff — 2026-08-08
+# Handoff — 2026-08-09
 
-Written to resume later. Supersedes the 2026-08-07 handoff entirely.
+Written to resume later. Supersedes the 2026-08-08 handoff entirely.
 
 Read [CLAUDE.md](../CLAUDE.md) first — it is the folder contract and it is
 authoritative. This file is a snapshot; that one is the rules.
 
 > [!IMPORTANT]
-> **The multi-tenant pivot is under way and its brief is
-> [MULTI-TENANT.md](./MULTI-TENANT.md).** Many accounts, each with a private
-> vault; Google + GitHub + email/password; waitlist-gated invites; an admin
-> dashboard. It reverses `DECISIONS.md` § "Waitlist, not signup" on purpose.
-> Read it before touching `auth.ts`, `proxy.ts`, `db/schema.ts` or
-> `lib/vault-data.ts` — and read §2 first, because the 12 items currently in the
-> vault are paid third-party templates and the tenancy boundary is a licensing
-> obligation, not a permission check.
+> **morgue is live at https://morgue.clupai.com.** Phases 1 and 2 of the
+> multi-tenant pivot are built, verified and deployed. **Phase 3 — the tenancy
+> boundary — is next, and it is the one with a licensing obligation behind it
+> rather than a preference.** The brief is
+> [MULTI-TENANT.md](./MULTI-TENANT.md); read §2 and §13a before touching
+> `auth.ts`, `proxy.ts`, `db/schema.ts`, `lib/vault-data.ts` or `api/media`.
 >
-> **Phases 1 and 2 landed on 2026-08-09.** Identity is in Postgres,
-> `AUTH_ALLOWED_LOGINS` is deleted, and `pnpm verify:auth` proves the lot
-> against a throwaway `initdb` cluster (66/66). **Phase 3 — the tenancy
-> boundary — is next, and it is the one with the licensing constraint behind
-> it.** The sections of this file below that predate the pivot describe a
-> single-owner system; where they disagree with MULTI-TENANT.md, that file
-> wins.
->
-> **A second brief now exists: [LOCAL-MODE.md](./LOCAL-MODE.md)** — open-sourcing
-> morgue so a designer can run it locally with one command, no accounts, no
+> A second, opposite brief exists: [LOCAL-MODE.md](./LOCAL-MODE.md), on
+> open-sourcing morgue so a designer can run it locally with no accounts and no
 > cloud services. Design only, nothing built, written to be handed to another
-> agent. It pulls in the opposite direction from MULTI-TENANT.md and says so.
+> agent.
 
-[STATUS.md](./STATUS.md) and [FINDINGS.md](./FINDINGS.md) were reconciled this
-session and are accurate as of this date.
+[STATUS.md](./STATUS.md) was reconciled against the tree on this date and every
+number in it was re-measured rather than carried forward.
 
 ---
 
 ## State in one screen
 
-Branch **`vault-and-showcase`**, **merged into `main`** this session — the first
-merge in the repo's life. Working tree clean, both branches pushed to
-`Clupai8o0/morgue` (private).
+Branch **`multi-tenant-identity`**, 4 commits ahead of `main`. Working tree
+clean. **Nothing is pushed** — `main` itself is 6 commits ahead of `origin/main`
+and has been since before this session.
 
 | | |
 |---|---|
-| items | 6 · `items/` **6.9 MB** (was 62 MB) |
-| archives | 1 (`blunt-main`) · `archives/` 43 MB |
-| fixtures | 11 · every one `license: "own"` — checked 2026-08-09, not "3 MIT" as this line used to say |
-| `out/` 409 MB · `site/` 64 MB | both regenerable |
+| items | 12 · `items/` 10 MB · all `license: paid`, all CodeGrid |
+| archives | 4 · `archives/` **274 MB** — `backrooms` alone is 170 |
+| fixtures | 11 · every one `license: "own"` |
+| `out/` 40 MB · `site/` 212 MB | both regenerable |
+| production | Neon (8 tables), R2 (220 objects / 22.3 MB), 1 account |
 
-| slug | kind | archive | on disk |
-|---|---|---|---|
-| `gooey-text-reveal` | project | — | 3.7 MB |
-| `livespot360-reveal` | static | — | **3.1 MB** (was 35 MB) |
-| `blunt-template` | unextracted | template:blunt-main | 20 KB |
-| `blunt-page-transitions` | project | extract:blunt-main | 20 KB |
-| `blunt-physics-footer` | unextracted | extract:blunt-main | 20 KB |
-| `blunt-smudge-reveal` | project | extract:blunt-main | 16 KB |
-
-## Verified green on this machine
+## Verified green on this machine, 2026-08-09
 
 ```
-pnpm test        11/11 fixtures
-pnpm build       6 items → site/
-pnpm check       all item pages run     ← was 6/7; the suite is now clean
-pnpm web:build   compiles, lists ƒ Proxy (Middleware)
-pnpm verify:web  10/10 against web:dev on :3210
+pnpm test          11/11 fixtures
+pnpm build         12 items → site/  (pruned 33 orphaned paths, 5.1MB)
+pnpm check         all 12 item pages run, 33 internal links followed
+pnpm web:build     compiles, lists ƒ Proxy (Middleware)
+pnpm verify:web    10/10   ← now brings its own Postgres and server
+pnpm verify:share  26/26
+pnpm verify:auth   84/84   ← new this session
 ```
 
-**`pnpm check` has no reds for the first time.** Every previous handoff carried
-one.
+Plus, against the **live domain**: the gate holds on `/vault`, `/admin` and
+`/account`; a share link redeems and renders all 12 items out of R2; the same
+cookie is refused `/admin`; `/api/media` issues a signed URL.
+
+`pnpm --filter web lint` reports **3 pre-existing errors** in
+`share-admin.tsx` and `vault-grid.tsx` (React-compiler rules, last touched in
+`96fb604`). Untouched this session and left alone deliberately.
 
 ---
 
 ## What changed this session
 
-Five things, all of them items that had been sitting open in the last handoff.
+### 1. Identity moved into Postgres — `AUTH_ALLOWED_LOGINS` is gone
 
-### 1. `blunt-preloader` retired — the failing check is gone
+Accounts are rows in `users`. The first is made with **`pnpm user add <email>
+--admin`**. Rule 9 survives structurally: no database means no accounts means
+no sign-in, which is harder to get wrong than remembering to leave a string
+blank.
 
-It was the standalone 23 MB ingest of the same BLUNT template that
-`archives/blunt-main` holds, built with `assetPrefix` where the archive uses
-`basePath`. `assetPrefix` rewrites `/_next/` only, so the item's inherited nav
-resolved against the vault root: `/about` 404'd and `/` served the vault grid at
-200. That was the last red in `pnpm check`.
+Three providers: GitHub, Google, email+password. Only the configured ones are
+registered, so the sign-in page never shows a button that cannot work.
 
-Retiring beat migrating because `blunt-template` already **is** the replacement —
-same template, same source, same route (`/archive/blunt-main/`), same entry file
-(`src/components/Preloader/Preloader.js`), same load-triggered capture of the
-preloader, and notes that are a strict superset of the retired item's. Migrating
-would have produced two cards showing the same video.
+Sessions stay JWT. Database sessions would put a query on every request, and
+`@auth/core`'s credentials branch never calls `createSession`, so a database
+strategy silently issues no session at all. Revocation is `users.sessionVersion`
+compared in the `jwt` callback on a throttle — `AUTH_SESSION_RECHECK_SECONDS`,
+default 60. **That number is the revocation lag and it is deliberate.**
 
-Removed from `items/`, `out/`, `site/item/`, `site/media/`, plus a stale
-`archives/blunt-preloader/candidates.json` left by an old survey run. Backed up
-first to `~/morgue-backups/2026-08-08/blunt-preloader/` (251 files, verified by
-count); the original delivery is still at `~/Downloads/CGMWTJULY2026/blunt-main`.
+### 2. One human, three sign-in methods, one account
 
-### 2. CLAUDE.md rule 2 now covers `basePath`
+Same-email linking already worked. What did not was connecting a provider under
+a *different* address. `@auth/core` links to the session user when there is one;
+our `signIn` callback was refusing first, so the link never happened. It now
+reads the current session.
 
-It used to say `assetPrefix` unconditionally, which is what produced the bug
-above. It now names both, says which to pick (`assetPrefix` for single-route
-items, `basePath` for anything that navigates), states that neither rewrites
-hand-written `<img src>` / raw `<a href>` / `next/image` src under
-`output: 'export'`, and points at the post-build pass for those.
+Linking while signed in deliberately does **not** require a provider-verified
+email — the direction is reversed from the takeover case, so a mistake only
+hurts the person making it. A provider already linked elsewhere is refused.
 
-Rule 11 and the comment headers in `bin/optimise.mjs`, `bin/survey.mjs`,
-`bin/check.mjs` and `bin/export-bundle.mjs` all cited
-`items/blunt-preloader/...` paths that no longer exist. Repointed at
-`archives/blunt-main`, which holds the identical code — the "seven routes" and
-"32 JS / 30 CSS" claims were re-verified against the archive, not assumed.
+New `/account`: connected providers, connect, disconnect, set/change password.
+**Disconnecting refuses to remove the last way in.**
 
-### 3. First `pnpm optimise --write` against real paid source
+### 3. `pnpm verify:auth` — and it caught a real bug immediately
 
-`livespot360-reveal`, through the four-flag destructive path
-(`--write --in-place --yes --backup`). **34.97 MB → 2.94 MB, −91.6%**, filenames
-and formats kept per rule 11. The dry run predicted the output byte-for-byte,
-because the estimator encodes rather than models.
+Boots a throwaway `initdb` cluster and a production `next start` against it.
+On its first run it caught `eq(email) && isNull(verified)` in the verify route:
+JavaScript's `&&` on two drizzle conditions evaluates to the second one, so
+"verify this address" meant **"verify every unverified address in the table"**.
 
-Originals in `~/morgue-backups/2026-08-08/optimise-orig-livespot360/`. A full
-copy of the pre-optimise item is in the same directory.
+The test that catches it seeds a *bystander* row. With one row a whole-table
+update and a correct one look identical — which is why the first version of the
+test passed.
 
-Images were spot-checked after the pass, not just `pnpm check`-ed — grain
-preserved, no blocking, edges clean at q82/2560w.
+### 4. Deployed
 
-**Trap this creates:** `out/livespot360-reveal/preview.mp4` still carries its
-2026-08-06 timestamp and was encoded from the original bytes, which is rule 11
-working as intended. But re-capture that item now and the new preview comes from
-optimised source. The current preview is not reproducible from disk.
+See STATUS.md § "In production" for the full configuration. The one thing worth
+repeating here: **`rootDirectory: web` is not optional.** Two separate things in
+the web build reach outside `web/` — `app/vault/[slug]/page.tsx` imports
+`bin/export-bundle.mjs`, and `lib/findings.ts` resolves `../docs/FINDINGS.md` at
+build time. The first deploy failed on the first of those, and moving that one
+file would not have fixed the second.
 
-### 4. `web:dev` binds :3210
+### 5. Privacy and terms
 
-`web/package.json` said `next dev`, which is :3000, while `bin/verify-web.mjs`
-defaults to :3210 and the OAuth callback is registered on :3210. Now
-`next dev --port 3210`. Nothing bound 3210 by default before this.
-
-### 5. Docs reconciled, including two gaps that were already closed
-
-STATUS still listed "the three showcase items don't exist" and "FINDINGS numbers
-are duplicated into `page.tsx`". Both had been fixed in earlier commits and never
-struck off. The showcase tiles read from `fixtures/*/meta.json` via
-`@/lib/showcase`, and `@/lib/findings` parses `docs/FINDINGS.md` at build time.
+Written from what the code does, with the claims traceable to the files that
+implement them. Both carry a visible box saying they need a lawyer and the
+operator's details.
 
 ---
 
@@ -145,110 +124,68 @@ struck off. The showcase tiles read from `fixtures/*/meta.json` via
 `web/src/lib/findings.ts` parses `docs/FINDINGS.md` at build time and **every
 extractor throws if its number moved.** A renamed table or rewritten sentence
 fails `pnpm web:build` by name rather than rendering a stale constant — the same
-fail-closed reasoning as rule 9.
+fail-closed reasoning as rule 9. It is also, now, one of the two reasons the
+Vercel project must be rooted at the repo rather than at `web/`.
 
-Load-bearing for the deploy: the `## Encoder selection` and `## Browser ceilings`
-tables, and the `## Determinism` and `## Per-item cost` sections. This session's
-FINDINGS edits were all additive or in other sections, and `pnpm web:build` was
-re-run afterwards to prove it.
-
----
-
-## Open decisions
-
-- **`build.mjs` never deletes from `site/` — now the worst gap in the pipeline.**
-  `items/` has 6 slugs; `site/item/` and `site/media/` have 17 each,
-  `site/data/items/` has 18. Two things sharpened it this session:
-  retiring an item left `site/item/blunt-preloader/` and
-  `site/media/blunt-preloader/` staged for upload (removed by hand — a
-  `publish:r2` run would have shipped the media of a **retired paid template** to
-  a bucket nothing will clean), and `pnpm test` builds `fixtures/` into the same
-  `site/` on every run and never cleans up. The fix is a prune-to-index pass at
-  the end of `build.mjs`, but it means `pnpm test` and `pnpm build` stop sharing
-  one `site/` — a design choice, not a one-liner.
-- **`archives/blunt-main/public` is 60 image files, 21 unique, 20 MB.** Measured,
-  not estimated. Retiring `blunt-preloader` removed a *copy* of that waste, not
-  the waste; four items depend on this archive. Not optimised yet because the
-  archive is a buildable Next project whose `out/` is already walked by
-  `morgue-rewrite.mjs`, and the interaction between the two is unworked.
-- **`blunt-physics-footer` has `"effect": []`.** Unchanged from last session.
-  None of the 16 controlled effect terms describes a matter.js gravity word-pile,
-  and its meta argues a blank beats a mislabel. Adding `physics-pile` would make
-  it findable, but the term must land in **both** CLAUDE.md and `bin/survey.mjs`
-  or the two copies drift.
-- **`morgue-rewrite.mjs` should become `bin/archive-assets.mjs`** before a second
-  archive is staged, or the next template gets a second copy of it. Same
-  reasoning `bin/vendor.mjs` exists for.
-- **`OPENAI_API_KEY` rotation was explicitly deferred** by the user on
-  2026-08-08. It was pasted in plaintext into a session transcript and lives in
-  `web/.env.local` (gitignored, verified). Still worth doing eventually.
-
----
-
-## Blocked on credentials — unchanged
-
-Empty in `web/.env.local`: `DATABASE_URL`, `IP_HASH_SALT`, `RESEND_API_KEY`,
-`AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`, `AUTH_SECRET`, and now
-`AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET`. Non-empty: `NOTIFY_TO`, `NOTIFY_FROM`,
-`MORGUE_DATA_SOURCE`, `AUTH_URL`, `OPENAI_API_KEY`. `AUTH_ALLOWED_LOGINS` was
-removed from the file on 2026-08-09 because it no longer does anything.
-
-Consequence: **the deployed path still has no credentials.** A production
-`next start` returns 503 on `/vault` — correctly, failing closed (rule 9).
-`pnpm verify:web` passes only against `web:dev`, which fails open by design.
-
-What is no longer true: "nothing outside the local dev path has ever run".
-`pnpm verify:share` and `pnpm verify:auth` both start a **production** server
-with injected secrets, and the latter also starts a **real Postgres**. Sign-in,
-lockout, revocation and password reset have all executed end to end against
-one. What has never run is any of it against *Neon*, or any OAuth round trip
-to a real GitHub or Google app.
-
-Vercel project and DNS (`morgue.clupai.com`, plus `api.morgue.clupai.com`
-rewritten to `/api/*`) are still unconfigured.
+Load-bearing: the `## Encoder selection` and `## Browser ceilings` tables, and
+the `## Determinism` and `## Per-item cost` sections.
 
 ---
 
 ## Next moves, in the order I would do them
 
-1. **Prune `site/` to the index in `build.mjs`.** It is the only gap with a
-   correctness edge — it can publish retired paid source — and everything else
-   on this list gets safer once it lands.
-2. **Optimise `archives/blunt-main/public`.** 20 MB, 39 of 60 files redundant,
-   four items depending on it. Back up first; it is paid source.
-3. **Land credentials.** Neon, `IP_HASH_SALT`, the GitHub OAuth app (callback on
-   :3210, which now matches `web:dev`), R2. Until then no production path has
-   ever executed.
-4. **Extract more from `blunt-main`** now that it is cheap — survey ranked
-   `footer` 0.58, `transition-provider` 0.50, `smudge-revealer` 0.35 and eight
-   more. Each is ~20 KB.
-5. **Ingest a second template as an archive from the start**, to prove the path
-   works without a migration behind it.
-6. **`kind: reference` has never been used.** The cheapest and often most useful
-   ingest — video + notes + URL, no code — and there is still not one example.
+1. **Register the production OAuth callbacks.**
+   `https://morgue.clupai.com/api/auth/callback/github` and `.../google`. Until
+   these exist neither button works, and no real OAuth round trip has ever
+   completed — `verify:auth` proves the policy those round trips feed, but
+   nothing has actually bounced off github.com.
+2. **Rotate the secrets listed at the end of STATUS.md § "In production".**
+   Several were printed into a session transcript on 2026-08-09. Rotating
+   `AUTH_SECRET` costs nothing while there is one account and no live share
+   links, and will never be cheaper.
+3. **Phase 3: the tenancy boundary.** Decisions A, B and C are settled and
+   recorded in MULTI-TENANT.md §13a. Note §10: R2 was empty until this session
+   and the database had no tables, so there is **no live keyspace to migrate** —
+   steps 3 and 4 are just how the publish path gets written.
+4. **Fill the legal placeholders** — `[operator legal name]`,
+   `[postal address]`, `[jurisdiction]`, copyright agent. A DMCA contact that
+   reaches nobody is worse than none.
+5. **`archives/` is 274 MB and `backrooms` is 170 of it.** Untouched. The
+   archive model's storage argument is now carried almost entirely by this one
+   directory being unoptimised.
+6. **Re-capture the four items affected by the WAAPI seek fix** —
+   `blunt-page-transitions`, `blunt-smudge-reveal`, `clip-mask-transition`,
+   `backrooms`. Their current previews record transitions as jump cuts. Still
+   open from the previous session.
 
 ---
 
 ## Traps paid for this session
 
-- **`pnpm test` overwrites `site/` with fixtures and leaves them there.** It runs
-  `MORGUE_SRC=fixtures` through build, so afterwards the vault serves 11 fixture
-  records and every real item is gone from the index. Always `pnpm build` after
-  `pnpm test`. A green suite that breaks the site it just tested is a bad shape.
+- **A test can pass because a secret is absent.** `verify:web` ran against
+  `pnpm web:dev` and only worked because `.env.local` had no auth credentials:
+  the proxy failed open and `/vault` rendered for anyone. The day those
+  variables were filled in it landed on `/signin` and reported an empty grid.
+  If a harness goes *red* as configuration gets *more* complete, suspect the
+  harness before the code.
 
-- **Deleting an item does not unpublish it.** See the `build.mjs` decision above.
-  Nothing warns.
+- **`&&` is not `and()`.** Drizzle conditions are objects, so `a && b` is `b`.
+  The compiler is happy, the query is silently wrong, and a single-row table
+  cannot tell you.
 
-- **`ls -d <dir>` still lies about `~/Downloads`.** Re-confirmed while checking
-  the original delivery survived: `ls -d` only stats the path and reports success
-  while the directory is unreadable under TCC. Test with a real file read.
+- **`ERR_PNPM_IGNORED_BUILDS` fires from the repo root too.** CLAUDE.md rule 7
+  said running web scripts inside `web/` fails this way. It also fails from the
+  root, because `pnpm --filter web <script>` runs with `cwd=web` and pnpm's
+  verify-deps check then reads `allowBuilds` from `web/pnpm-workspace.yaml` —
+  where `esbuild` had been left as the literal placeholder string. Fixed there.
 
-- **The optimiser's dry run is not an estimate.** It encodes each file to measure
-  it, so `--write` produces exactly the bytes the report predicted. Useful: the
-  dry run is a safe rehearsal, not a guess, and disagreement between the two
-  would mean something is wrong.
+- **A shell's working directory persists between commands.** A `cd web` in one
+  step left every later relative path resolving inside `web/`, which reads as
+  "the file is missing" rather than "you are in the wrong place".
 
-- **Historical measurements should be superseded, not edited.** FINDINGS now
-  states this at the top. Rewriting the 2026-08-07 tables to match today would
-  have destroyed the only evidence that the size inversion was ever real — which
-  is the argument that produced the optimiser.
+- **Masking secrets in a preview is easy to get wrong.** A `sed` that only
+  matched single-quoted values printed seven credentials in plaintext. If output
+  might contain secrets, suppress it rather than filtering it.
+
+- **`pnpm test` still rebuilds `site/` from `fixtures/` and does not clean up.**
+  Always `pnpm build` after. Unchanged, and it bit again this session.

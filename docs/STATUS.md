@@ -4,10 +4,10 @@ Last updated: 2026-08-09.
 
 Rationale for the architecture is in [DECISIONS.md](./DECISIONS.md).
 The major change in flight — multi-tenant accounts — is specified in
-[MULTI-TENANT.md](./MULTI-TENANT.md). **Phases 1 and 2 (identity) are built and
-verified; phases 3–7 are not started.** So the *auth* described below is the
-new one; everything about the *collection* still describes the single-owner
-system, because the tenancy boundary is phase 3.
+[MULTI-TENANT.md](./MULTI-TENANT.md). **Phases 1 and 2 (identity) are built,
+verified and DEPLOYED; phases 3–7 are not started.** So the *auth* described
+below is the new one; everything about the *collection* still describes the
+single-owner system, because the tenancy boundary is phase 3.
 Open-sourcing it for local use is specified in
 [LOCAL-MODE.md](./LOCAL-MODE.md) — design only, nothing built.
 Measurements are in [FINDINGS.md](./FINDINGS.md).
@@ -17,35 +17,45 @@ The session snapshot this was reconciled against is [HANDOFF.md](./HANDOFF.md).
 
 ## The collection
 
-Six items off three commercial templates — LiveSpot360, BLUNT and the gooey text demo —
-all CodeGrid, all `license: paid`. Two were ingested 2026-08-06, the four `blunt-main`
-cards derived 2026-08-07 once shared archives existed. Nothing here is committed —
-`items/`, `out/`, `site/` and `archives/` are gitignored by design, so **these exist only
-on this disk.** Working copies of anything destructive this session are in
-`~/morgue-backups/2026-08-08/`.
+**Twelve items off seven commercial templates**, all CodeGrid, all
+`license: paid`, all `source: codegrid` — checked, not assumed. Two were
+ingested 2026-08-06, four `blunt-main` cards derived 2026-08-07 once shared
+archives existed, and six more arrived 2026-08-08 with the parallel-agent
+stress test. Nothing here is committed — `items/`, `out/`, `site/` and
+`archives/` are gitignored by design, so **these exist only on this disk and in
+R2.** Backups of anything destructive are in `~/morgue-backups/`.
 
 | slug | kind | archive | on disk | preview |
 |---|---|---|---|---|
-| `gooey-text-reveal` | `project` | — | 3.7 MB | 1096 KB |
-| `livespot360-reveal` | `static` | — | **3.1 MB** | 180 KB |
-| `blunt-template` | `unextracted` | template:`blunt-main` | **20 KB** | 240 KB |
-| `blunt-page-transitions` | `project` | extract:`blunt-main` | **20 KB** | 52 KB |
-| `blunt-physics-footer` | `unextracted` | extract:`blunt-main` | **20 KB** | 852 KB |
-| `blunt-smudge-reveal` | `project` | extract:`blunt-main` | **16 KB** | 104 KB |
+| `and2es-3d-slider` | `static` | — | 1.0 MB | 155 KB |
+| `backrooms` | `unextracted` | `template:backrooms` | 20 KB | 87 KB |
+| `blunt-page-transitions` | `project` | `extract:blunt-main` | 20 KB | 50 KB |
+| `blunt-physics-footer` | `unextracted` | `extract:blunt-main` | 20 KB | 852 KB |
+| `blunt-smudge-reveal` | `project` | `extract:blunt-main` | 16 KB | 103 KB |
+| `blunt-template` | `unextracted` | `template:blunt-main` | 20 KB | 237 KB |
+| `clip-mask-transition` | `project` | `template:clip-mask` | 20 KB | 115 KB |
+| `deadlock-studios` | `unextracted` | `template:deadlock-studios` | 20 KB | 430 KB |
+| `glitchandgrit-slider` | `static` | — | 2.8 MB | 355 KB |
+| `gooey-text-reveal` | `project` | — | 3.3 MB | 1092 KB |
+| `livespot360-reveal` | `static` | — | 3.1 MB | 180 KB |
+| `starfield-animation` | `static` | — | 96 KB | 1169 KB |
 
-The four-figure difference is the point of `archives/`. The four BLUNT cards share one
-43 MB copy of the template; under the old one-directory-per-item model they would have
-cost 4 × 23 MB. An archive-backed item is meta/capture/notes and nothing else.
-
-`livespot360-reveal` is 3.1 MB rather than 35 MB because `pnpm optimise` was finally run
-against `items/` on 2026-08-08 — see below.
+**The 20 KB rows are the point of `archives/`.** Eight of the twelve are
+archive-backed and cost meta/capture/notes and nothing else; the four BLUNT
+cards share one copy of a template that would otherwise have been stored four
+times. The four standalone `static`/`project` items are the ones carrying their
+own source, and they are most of `items/`.
 
 | Directory | Size | Was 2026-08-07 |
 |---|---|---|
-| `items/` | **6.9 MB** | 62 MB |
-| `archives/` | 43 MB (1 archive, `blunt-main`) | 46 MB |
-| `out/` | 409 MB (includes PNG frame dirs) | 429 MB |
-| `site/` | 64 MB | 129 MB |
+| `items/` | **10 MB** | 62 MB |
+| `archives/` | 274 MB — `backrooms` 170, `blunt-main` 43, `clip-mask` 35, `deadlock-studios` 25 | 46 MB (1) |
+| `out/` | **40 MB** (frames are pruned after encoding) | 429 MB |
+| `site/` | 212 MB | 129 MB |
+
+`archives/` is now the largest thing on disk by a wide margin, and `backrooms`
+alone is 170 MB of it. That is the cost side of the archive model and it has
+not been paid down — see the gaps below.
 
 Prune `node_modules` and `.next` out of an archive after building it — a staging build
 leaves 435 MB behind, which inverts the entire storage argument. Only
@@ -121,16 +131,16 @@ landing page and a private vault — then the first real ingest.
 |---|---|
 | Design tokens from `DESIGN.md`, dark-only | `/styleguide` renders every token |
 | General Sans + Inter, self-hosted | no 404s, correct weights |
-| Paginated vault data out of `build.mjs` | `facets.json` 1.7 KB / 6 items |
+| Paginated vault data out of `build.mjs` | `facets.json` 3.6 KB / 12 items |
 | Grid: search, filter chips, scroll pagination | `pnpm verify:web` |
 | Video LRU ported verbatim from `grid.html` | see caveat below |
 | Lenis + GSAP + reveal + magnetic | `pnpm verify:web` 10/10 |
 | Landing page: pipeline story, waitlist form | 4581px, all sections reveal |
 | Neon + Drizzle schema, waitlist API | validation paths only — see blocked |
 | Auth.js + GitHub OAuth + `src/proxy.ts` | gate tested with dummy credentials |
-| R2 two-bucket storage + signed URLs | `publish.mjs --dry-run`, 57 files / 2.7MB |
+| R2 two-bucket storage + signed URLs | **published for real 2026-08-09: 220 objects, 22.3 MB** |
 | Agent export bundles + `Copy for agent` | clipboard verified; paid `static` item 16,427 chars |
-| Ingest of third-party paid templates | 6 items, `pnpm check` green 2026-08-08 |
+| Ingest of third-party paid templates | 12 items, `pnpm check` green 2026-08-09 |
 | Shared archives — one template, many cards | 4 cards off `blunt-main` at ~20 KB each |
 | Relations visible in the vault | template↔extract, verified in Chrome by screenshot |
 | `pnpm survey` / `pnpm extract` | 11 ranked candidates + coupling report |
@@ -140,22 +150,35 @@ landing page and a private vault — then the first real ingest.
 | Preview ladder — xs 200w, sm 360w | xs −85%, sm −61%; grid pulls 360×226 |
 | Extract previews in the relations strip | 3 thumbnails, all requesting `preview-xs.mp4` |
 | Preview loading state | held the response 4s in Playwright; appears, then clears on paint |
-| **Read-only share links** | **`pnpm verify:share` 24/24 against a production build** |
-| **Accounts in Postgres; GitHub + Google + email/password** | **`pnpm verify:auth` 66/66 against a throwaway `initdb` cluster** |
+| **Read-only share links** | **`pnpm verify:share` 26/26 against a production build** |
+| **Accounts in Postgres; GitHub + Google + email/password** | **`pnpm verify:auth` 84/84 against a throwaway `initdb` cluster** |
 | **Lockout, session revocation, password reset, email verification** | same suite — reset and verification run end to end through the emailed link |
+| **One account, three sign-in methods** | same suite — connecting a provider under a *different* address links rather than forking the account |
+| **The last sign-in method cannot be disconnected** | same suite — a password counts as one |
+| **Privacy and terms pages** | live; the takedown section states the consequence of admins being unable to read a vault |
+| **Deployed: `https://morgue.clupai.com`** | **verified against the live domain — see “In production” below** |
 
-Commands, all green on 2026-08-09:
+Commands, all green on 2026-08-09 and all re-run that day:
 
 ```
 pnpm test          11/11 fixtures
-pnpm build         6 items → site/
-pnpm check         all item pages run          ← was 6/7, now clean
-pnpm renditions    34 renditions, 17 items
+pnpm build         12 items → site/   (pruned 33 orphaned paths, 5.1MB)
+pnpm check         all 12 item pages run, 33 internal links followed
 pnpm web:build     compiles, lists ƒ Proxy (Middleware)
-pnpm verify:web    10/10 against web:dev on :3210
-pnpm verify:share  24/24 against its own production server
-pnpm verify:auth   66/66 against its own production server AND its own Postgres
+pnpm verify:web    10/10 — now self-contained, see below
+pnpm verify:share  26/26 against its own production server
+pnpm verify:auth   84/84 against its own production server AND its own Postgres
 ```
+
+**`pnpm verify:web` was passing for the wrong reason and no longer is.** It ran
+against `pnpm web:dev`, which worked only because `web/.env.local` had no auth
+credentials in it: `authConfigured()` was false, `proxy.ts` fails open in
+development, and `/vault` rendered for anyone. The day those variables were
+filled in, the dev server started gating `/vault` correctly and the harness
+reported that the grid had no cards — the product working and the test wrong.
+It now brings its own Postgres and its own production server and signs in,
+which also means it exercises the build a visitor actually gets. A test whose
+pass depends on a secret being absent is not testing what it claims.
 
 **`pnpm verify:share` was the first thing here that ever ran outside the
 local dev path, and `pnpm verify:auth` went further — it starts a real
@@ -195,38 +218,88 @@ un-issued.** Revocation is checked at redemption and the cookie it mints lasts
 an hour, so revoking takes effect within an hour, not instantly. Rotating
 `AUTH_SECRET` is the break-glass and kills everything at once.
 
-## Blocked on credentials
+## In production
 
-Nothing here is a code problem. All variables are in `web/.env.local`
-(template: `web/.env.example`).
+**Live at https://morgue.clupai.com since 2026-08-09.** The section this
+replaces was called "Blocked on credentials" and said "nothing outside the
+local dev path has ever run". Both are now wrong.
 
-- **Neon** — `DATABASE_URL` (pooled). Migration already generated and verified:
-  `web/drizzle/0000_glossy_rhino.sql`, 2 tables, 2 indexes. Then `pnpm db:push`.
-- **`IP_HASH_SALT`** — `openssl rand -hex 32`.
-- **GitHub OAuth app** — `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`, plus
-  `AUTH_SECRET` (`openssl rand -base64 32`).
-- **Cloudflare R2** — account id, access key, secret. Create `morgue-private`
-  with **no public access** and `morgue-public`.
-- **Resend** *(optional)* — without it signups still save; notification is
-  skipped with a log line rather than failing.
+| | |
+|---|---|
+| Vercel project | `morgue`, `rootDirectory: web`, Node 24, deployed from the repo root |
+| Domain | `morgue.clupai.com` — `clupai.com` is already on Vercel nameservers, so no DNS work was needed |
+| Database | Neon, `ap-southeast-2`. Migrations applied with `pnpm db:migrate`; 8 tables |
+| Storage | R2 `morgue-private`, 220 objects / 22.3 MB. `morgue-public` is still empty |
+| Accounts | one: `clupaio4@gmail.com`, admin, no password yet |
+| Env | 17 variables on Production |
 
-Once these land, the untested paths are: real insert, duplicate-email handling,
-the rate limiter, a live R2 upload, and a genuine signed-URL fetch.
+**`rootDirectory: web` is not optional and the first deploy failed without it.**
+Two separate things in the web build reach outside `web/`:
+`app/vault/[slug]/page.tsx` imports `bin/export-bundle.mjs`, and
+`lib/findings.ts` resolves `../docs/FINDINGS.md` at build time. Moving one file
+would not have fixed the other. The whole tree is uploaded and Vercel builds
+from `web/`.
 
-Consequence worth stating plainly: **a production `next start` cannot serve
-`/vault` at all.** The proxy returns 503, failing closed, which is the intended
-behaviour (rule 9). `pnpm verify:web` only passes against `pnpm web:dev`, which
-fails open by design. Nothing outside the local dev path has ever run.
+Two variables differ deliberately from `web/.env.local`:
+
+- **`MORGUE_DATA_SOURCE=r2`** — `items/` is gitignored, so Vercel deploys from a
+  tree that has never contained the collection. `capture → build → publish:r2`
+  is the only path by which anything reaches production.
+- **`AUTH_URL=https://morgue.clupai.com`** — emailed reset links must not be
+  built from the request's `Host` header, which is attacker-controlled. See
+  `lib/site-url.ts`.
+
+Two were deliberately **not** shipped: `OPENAI_API_KEY` and `R2_TOKEN`. Nothing
+under `web/` reads either, and an unused credential on a third system is only
+blast radius.
+
+### What was verified against the live domain
+
+Not assumed — checked with curl against `morgue.clupai.com`:
+
+- `/`, `/privacy`, `/terms`, `/signin` serve 200; the sign-in page offers
+  GitHub, Google and password.
+- `/vault`, `/admin`, `/account` all redirect to `/signin` — the gate runs, so
+  the environment is being read.
+- A 60-second share link minted with the production `AUTH_SECRET` redeems,
+  opens `/vault`, and renders **all 12 items out of R2**; the same cookie is
+  refused `/admin` and `/account`; `/api/media/...` issues a signed URL.
+- A malformed token is 403.
+
+### Still to do before anyone else uses it
+
+- **Register the production OAuth callbacks.** Neither button works until they
+  exist: `https://morgue.clupai.com/api/auth/callback/github` and
+  `.../callback/google`. This is the one remaining blocker on signing in.
+- **The legal pages carry placeholders** — `[operator legal name]`,
+  `[postal address]`, `[jurisdiction]`, and the copyright-agent address. Both
+  pages say in a visible box that they need a lawyer. A DMCA contact that
+  reaches nobody is worse than none.
+- **Preview deployments have no environment variables**, so they return 503 and
+  are gated by Vercel deployment protection. That is correct fail-closed
+  behaviour, not a misconfiguration — but it means previews cannot be used to
+  test anything behind the wall.
+- **Rotate the secrets that were printed into a session transcript on
+  2026-08-09**: `AUTH_SECRET`, `AUTH_GITHUB_SECRET`, `AUTH_GOOGLE_SECRET`,
+  `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_TOKEN`, `RESEND_API_KEY`.
+  Rotating `AUTH_SECRET` invalidates every share link and signs everyone out,
+  which costs nothing while there is one account and no live links — so it is
+  cheaper now than it will ever be again. `OPENAI_API_KEY` was already in this
+  category and its rotation was deliberately deferred by the owner.
 
 ## Not verified
 
-- **The video LRU has never been exercised.** Cap is 12; the built index has 6
-  items. It is ported verbatim and deliberately un-refactored, but eviction
-  needs >12 items before it does anything. Retiring an item moved this further
-  away, not closer.
-- **Vercel project and DNS** are not configured — `morgue.clupai.com`, plus
-  `api.morgue.clupai.com` as a second domain on the same project rewritten to
-  `/api/*`.
+- **The video LRU has still never evicted anything, and it is now one item
+  away.** Cap is 12; the index holds exactly 12. Eviction needs a *thirteenth*,
+  so the next ingest is the first that will exercise code ported verbatim from
+  `bin/grid.html` and deliberately never refactored. Watch it when it happens.
+- **No real OAuth round trip has ever completed.** `verify:auth` proves the
+  policy those round trips feed, against a real database, but nothing has
+  actually bounced off github.com or accounts.google.com — the production
+  callbacks are not registered yet. Until one does, "sign in with GitHub" is
+  verified in every part except the part that talks to GitHub.
+- **`api.morgue.clupai.com`** was planned as a second domain rewritten to
+  `/api/*` and is not configured. Nothing needs it yet.
 - **Extraction proper — still the biggest unknown, but a smaller one now.**
   *Ingesting* a commercial template is done and measured; *isolating* one
   section out of a large one so it runs standalone is not. `blunt-template` is
@@ -235,31 +308,33 @@ fails open by design. Nothing outside the local dev path has ever run.
   hours to isolate one effect — has never been taken, and the archive model makes
   deferring cheap enough that nothing forces the question.
 - **`kind: reference` has never been used.** The cheapest path in the contract
-  is the only one never walked.
+  is the only one never walked — and MULTI-TENANT.md §7 now depends on it, since
+  reference-first is the chosen ingest for everyone who is not the owner.
+- **Nothing has been tested with two accounts.** There is one row in `users`.
+  The tenancy boundary is phase 3 and its gate is precisely this.
 
 ## Known gaps worth fixing before the collection grows
 
 Ordered by how much they cost now, not how interesting they are.
 
-- **`build.mjs` never deletes from `site/` — now the worst gap in the pipeline.**
-  `items/` has 6 slugs; `site/item/` and `site/media/` have 17 each and
-  `site/data/items/` has 18. `publish.mjs` walks `site/` rather than the index,
-  so a real upload ships every orphan and nothing will ever remove them from the
-  bucket. Two things sharpened this on 2026-08-08:
+- ~~**`build.mjs` never deletes from `site/`.**~~ **Closed 2026-08-08** in
+  `b087a26`. `build.mjs` now prunes `site/item`, `site/media` and
+  `site/data/items` to the index at the end of every run — today's build
+  reported *"pruned 33 orphaned path(s) (5.1MB)"*, which is `pnpm test` having
+  left its 11 fixture slugs behind, exactly as predicted.
 
-  1. **Retiring an item does not remove it from `site/`.** After
-     `items/blunt-preloader` was deleted, `site/item/blunt-preloader/` and
-     `site/media/blunt-preloader/` were still there and still publishable. A
-     `publish:r2` run would have uploaded the media of a **retired paid
-     template**. Removed by hand; nothing in the pipeline would have done it and
-     nothing warns.
-  2. **`pnpm test` is how the orphans keep arriving.** It builds `fixtures/`
-     into the same `site/` and does not clean up, so every test run leaves 11
-     fixture slugs behind.
+  Worth keeping the reason on file, because it was the gap with a correctness
+  edge rather than a tidiness one: `publish.mjs` walks `site/` rather than the
+  index, so before the prune a real upload shipped every orphan and nothing
+  would ever have removed them from the bucket. After `items/blunt-preloader`
+  was retired, `site/item/blunt-preloader/` was still there and still
+  publishable — a `publish:r2` run would have uploaded the media of a **retired
+  paid template**. The first real publish happened on 2026-08-09 and shipped
+  220 objects, all of them in the index.
 
-  Fix is small — prune `site/item`, `site/media` and `site/data/items` to the
-  index at the end of `build.mjs` — but it means `pnpm test` and `pnpm build`
-  stop coexisting in one `site/`, which is a real design choice, not a one-liner.
+  **`pnpm test` still leaves fixtures in `site/` and still needs a `pnpm build`
+  after it.** The prune cleans up on the next build rather than preventing the
+  mess, which is the right trade but not the same as fixing it.
 
 - **Asset waste — measured, and now half-addressed.** The 2026-08-07 figure was
   62 MB across three items with 21.6 MB recoverable by content-dedup alone.
@@ -288,8 +363,10 @@ Ordered by how much they cost now, not how interesting they are.
   which is true for a fixture and a confident lie for a Next.js item.
 - ~~**The three showcase items don't exist.**~~ **Closed.** `web/src/app/page.tsx`
   reads them out of `fixtures/*/meta.json` via `@/lib/showcase`, count included.
-  The three MIT fixtures are real. Still true that **everything in the vault
-  proper is someone else's paid work** — the showcase is the only thing on the
+  The showcase fixtures are real — though they are `license: "own"`, not MIT as
+  this file claimed until 2026-08-09; all 11 fixtures are, checked. Still true
+  that **everything in the vault proper is someone else's paid work** — the
+  showcase is the only thing on the
   public side that is ours.
 - ~~**FINDINGS numbers are duplicated** into `web/src/app/page.tsx`.~~ **Closed.**
   `@/lib/findings` parses `docs/FINDINGS.md` at build time and every extractor
