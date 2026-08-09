@@ -25,9 +25,12 @@ number in it was re-measured rather than carried forward.
 
 ## State in one screen
 
-Branch **`multi-tenant-identity`**, 4 commits ahead of `main`. Working tree
-clean. **Nothing is pushed** — `main` itself is 6 commits ahead of `origin/main`
-and has been since before this session.
+Branch **`multi-tenant-identity`**, 5 commits ahead of `main`. Working tree
+clean. Both branches are now **pushed** to `origin` — `main` at `0bad44f`,
+`multi-tenant-identity` tracking `origin/multi-tenant-identity`. They were
+unpushed for most of this session; see
+[Moving to another device](#moving-to-another-device) for what git does *not*
+carry.
 
 | | |
 |---|---|
@@ -56,6 +59,110 @@ cookie is refused `/admin`; `/api/media` issues a signed URL.
 `pnpm --filter web lint` reports **3 pre-existing errors** in
 `share-admin.tsx` and `vault-grid.tsx` (React-compiler rules, last touched in
 `96fb604`). Untouched this session and left alone deliberately.
+
+---
+
+## Moving to another device
+
+Git carries the tool. It carries **none of the morgue** — `items/`, `archives/`,
+`out/` and `site/` are gitignored on purpose (see the header of `.gitignore`),
+and secrets are gitignored too. A fresh clone is a working repo with an empty
+collection. Plan for three separate transfers, not one.
+
+### 1. The code — done
+
+```bash
+git clone https://github.com/Clupai8o0/morgue.git
+cd morgue && pnpm install
+```
+
+`docs/` is tracked, so this file, STATUS, FINDINGS, DECISIONS, MULTI-TENANT and
+LOCAL-MODE all arrive with the clone. Nothing about them is local-only.
+
+### 2. The environment — via Vercel, with four exceptions
+
+`.vercel/` is gitignored, so the clone is not linked to the project. Link it,
+then pull:
+
+```bash
+vercel link          # clupai8o0s-projects / morgue
+vercel env pull --environment=production web/.env.local
+```
+
+**`--environment=production` is not optional.** Every one of the 17 variables on
+the project is scoped Production-only, and a bare `vercel env pull` defaults to
+Development — it succeeds and writes a file with nothing useful in it, which
+reads as "the pull worked" right up until the app 503s.
+
+Then fix what the pull gets wrong for local work. Production values are correct
+for production and wrong for a dev machine:
+
+| Variable | Production | What a dev machine wants |
+|---|---|---|
+| `AUTH_URL` | `https://morgue.clupai.com` | `http://localhost:3210` — OAuth callbacks and emailed reset links are built from this |
+| `MORGUE_DATA_SOURCE` | `r2` | `local`, to read the sibling `site/` off disk instead of the bucket — note that is the *built* site, not `items/`, so it needs a `pnpm build` first (`vault-data.ts:20`) |
+| `DATABASE_URL` | Neon, `ep-billowing-night-a7cr14g9-pooler` | the same Neon branch unless you make another — **a pulled prod env points `pnpm web:dev` at the live database and live buckets** |
+
+And two variables exist only on this machine, deliberately — STATUS.md
+§ "In production" records why: nothing under `web/` reads either, and an unused
+credential on a third system is only blast radius.
+
+- **`OPENAI_API_KEY`** — used by `bin/icon.py` alone (`pnpm icon --generate`).
+- **`R2_TOKEN`** — not read by any code in the tree.
+
+Neither is in Vercel, so neither arrives with the pull. Copy them by hand if you
+want them, or leave them out; the app runs without both.
+
+> [!WARNING]
+> If you copy `web/.env.local` directly instead of pulling — over AirDrop, 1Password,
+> `age`, anything encrypted — that is fine, but it must not travel through a chat,
+> an email or a paste bin. `AUTH_SECRET` is in that file, and share links are
+> signed with a key derived from it: whoever holds it can mint a link to the
+> vault without an account. It is already on the rotate list at the end of
+> STATUS.md for exactly this reason.
+
+### 3. The collection — by hand, or not at all
+
+274 MB of `archives/` and 10 MB of `items/`, none of it in git and none of it
+reproducible by a build:
+
+- **Copy `items/` and `archives/`** across directly (rsync, external disk).
+  `out/` and `site/` need not travel — `pnpm capture` then `pnpm build`
+  regenerate both, though a full re-capture of 12 items is not quick. Copying
+  `out/` too saves the capture and leaves only `pnpm build` to run.
+- **Or skip them.** With `MORGUE_DATA_SOURCE=r2` the web app reads the 220
+  published objects out of the bucket and the vault works completely without a
+  local collection. What you lose is the ingest side: `pnpm capture`,
+  `pnpm build`, `pnpm check` and `pnpm export` all need `items/` on disk.
+
+Note the coupling between the two bullets: **`MORGUE_DATA_SOURCE=local` reads
+`site/`, which only exists after a `pnpm build`, which needs `items/`.** Copy
+nothing and set `local`, and the vault renders empty rather than erroring —
+which looks like a broken app instead of an absent collection. Either bring the
+collection or stay on `r2`; there is no useful middle setting.
+
+`pnpm test` runs against `fixtures/`, which **is** tracked, so the fixture suite
+is green on a fresh clone with no collection at all.
+
+### 4. What the machine itself needs
+
+Beyond `pnpm install`: **Node 24** (24.15.0 here), **pnpm 11** (11.13.1),
+**ffmpeg** on `PATH` for `pnpm capture`, and **Postgres client binaries** —
+`initdb` and `pg_ctl` — for `pnpm verify:auth`, which builds a throwaway cluster
+rather than mocking one (`brew install postgresql@16`). Playwright browsers come
+down with `pnpm install`. Without ffmpeg, capture fails at the encode step after
+doing all the work; without `initdb`, `verify:auth` says so by name and exits.
+
+### 5. First thing to run on the new machine
+
+```bash
+pnpm test          # 11/11 fixtures, needs no collection and no secrets
+pnpm web:build     # must list ƒ Proxy (Middleware) — rule 6
+pnpm verify:auth   # 84/84, brings its own Postgres
+```
+
+If `pnpm web:build` fails inside `lib/findings.ts`, nothing is wrong with the
+machine — see the FINDINGS section below.
 
 ---
 
