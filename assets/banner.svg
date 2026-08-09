@@ -1,0 +1,478 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600"
+     role="img" aria-labelledby="bannerTitle bannerDesc" font-family="sans-serif">
+  <title id="bannerTitle">morgue — a drawer of clippings for motion on the web</title>
+  <desc id="bannerDesc">An exploded view of the morgue vault: a browser window showing a
+    searchable grid of captured UI animations, with a lifted preview card, a capture log
+    reading "motion: OK", a 24-frame contact sheet, and an agent-ready export bundle floating
+    off its surface.</desc>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════════════
+    README banner. Rendered by GitHub through <img>, which means:
+      · no scripts — declarative CSS animation only
+      · no webfonts — General Sans and Inter are not on the reader's machine,
+        so this falls back to a system stack and every string is sized with
+        slack for the metric difference
+      · the FIRST FRAME must already be correct. Every animation below loops
+        from its resting state, so a renderer that ignores CSS (npm, some
+        editors, prefers-reduced-motion) shows a finished composition rather
+        than a half-built one.
+    Palette is verbatim from web/src/app/globals.css. Dark only, because
+    DESIGN.md says the brand is dark and there is no light mode to match — the
+    corners are clipped to a radius so it reads as a card on GitHub's white.
+
+    TWO NUMBERS HERE ARE COPIED FACTS, not decoration: 1113/1113 and 16 are
+    read out of docs/FINDINGS.md. app/page.tsx reads that file at build time
+    precisely so a re-measurement cannot leave a stale claim on a public
+    surface; an SVG cannot, so this comment is the only thing standing between
+    a new measurement and a banner that quietly lies. Re-measure, re-check
+    here. Everything else on the page is illustrative: "24 items" is a mock,
+    and "150 frames · 30 fps" is just 5000ms at the capture.json default.
+    ═══════════════════════════════════════════════════════════════════════════
+  -->
+
+  <defs>
+    <clipPath id="frame"><rect x="0" y="0" width="1200" height="600" rx="20"/></clipPath>
+    <clipPath id="p1"><rect x="576" y="228" width="161" height="92" rx="7"/></clipPath>
+    <clipPath id="p2"><rect x="761" y="228" width="161" height="92" rx="7"/></clipPath>
+    <clipPath id="p4"><rect x="576" y="366" width="161" height="92" rx="7"/></clipPath>
+    <clipPath id="p6"><rect x="946" y="366" width="161" height="92" rx="7"/></clipPath>
+
+    <!-- Atmosphere. The two blooms are the "gradient atmosphere" cards from the
+         design system, used here as light rather than as paint — hence the low
+         opacity ceiling. -->
+    <radialGradient id="bloomV" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#6a4cf5" stop-opacity="0.27"/>
+      <stop offset="1" stop-color="#6a4cf5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bloomM" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d44df0" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#d44df0" stop-opacity="0"/>
+    </radialGradient>
+
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#ffffff" stroke-opacity="0.025" stroke-width="1"/>
+    </pattern>
+
+    <linearGradient id="topHi" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- spotlight-magenta / orange / coral, transcribed from the @utility
+         blocks in globals.css: one linear base, two radial lights. Three of the
+         seven posters carry one; the rest are line art, because a wall of
+         full-bleed gradient stops reading as a collection and starts reading
+         as decoration. -->
+    <linearGradient id="mBase" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#d44df0"/><stop offset="1" stop-color="#7a1f8c"/>
+    </linearGradient>
+    <radialGradient id="mA" cx="0.75" cy="0.2" r="0.75">
+      <stop offset="0" stop-color="#ff7ad9" stop-opacity="0.92"/>
+      <stop offset="0.6" stop-color="#ff7ad9" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="mB" cx="0.15" cy="0.85" r="0.78">
+      <stop offset="0" stop-color="#6a4cf5" stop-opacity="0.9"/>
+      <stop offset="0.62" stop-color="#6a4cf5" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="oBase" x1="0" y1="0" x2="0.32" y2="1">
+      <stop offset="0" stop-color="#ff7a3d"/><stop offset="1" stop-color="#b32d4a"/>
+    </linearGradient>
+    <radialGradient id="oA" cx="0.25" cy="0.2" r="0.78">
+      <stop offset="0" stop-color="#ffb36b" stop-opacity="0.95"/>
+      <stop offset="0.62" stop-color="#ffb36b" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="oB" cx="0.8" cy="0.85" r="0.72">
+      <stop offset="0" stop-color="#ff5577" stop-opacity="0.9"/>
+      <stop offset="0.58" stop-color="#ff5577" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="cBase" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#ff5577"/><stop offset="1" stop-color="#8c1f3d"/>
+    </linearGradient>
+    <radialGradient id="cA" cx="0.7" cy="0.15" r="0.75">
+      <stop offset="0" stop-color="#ff96ad" stop-opacity="0.95"/>
+      <stop offset="0.6" stop-color="#ff96ad" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cB" cx="0.2" cy="0.9" r="0.75">
+      <stop offset="0" stop-color="#ff7a3d" stop-opacity="0.88"/>
+      <stop offset="0.58" stop-color="#ff7a3d" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- One shadow, three depths. Everything that has lifted off the window
+         surface carries the same light source. -->
+    <filter id="lift" x="-45%" y="-45%" width="190%" height="190%">
+      <feDropShadow dx="0" dy="22" stdDeviation="26" flood-color="#000000" flood-opacity="0.62"/>
+    </filter>
+    <filter id="liftSm" x="-45%" y="-45%" width="190%" height="190%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.58"/>
+    </filter>
+    <filter id="liftWin" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="26" stdDeviation="34" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+
+    <style>
+      text { font-family: "Inter", ui-sans-serif, system-ui, -apple-system,
+             "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+              Consolas, "Liberation Mono", monospace; }
+
+      /* Drift. Different periods and phases so the four pieces never sync up
+         into a single pulse — three primes, effectively. */
+      @keyframes bobA { 0%,100% { transform: translateY(0) }    50% { transform: translateY(-8px) } }
+      @keyframes bobB { 0%,100% { transform: translateY(0) }    50% { transform: translateY(6px) } }
+      @keyframes bobC { 0%,100% { transform: translateY(0) }    50% { transform: translateY(-6px) } }
+      @keyframes bobD { 0%,100% { transform: translateY(0) }    50% { transform: translateY(7px) } }
+      .bobA { animation: bobA 7s   ease-in-out infinite; }
+      .bobB { animation: bobB 9s   ease-in-out infinite; }
+      .bobC { animation: bobC 11s  ease-in-out infinite; }
+      .bobD { animation: bobD 8.5s ease-in-out infinite; }
+
+      /* The search caret. */
+      @keyframes caret { 0%,44% { opacity: 1 } 50%,94% { opacity: 0 } 100% { opacity: 1 } }
+      .caret { animation: caret 1.1s steps(1,end) infinite; }
+
+      /* Playhead on the lifted card. stroke-dashoffset rather than an animated
+         width — geometry properties are still uneven across renderers, dash
+         offset is not. */
+      @keyframes play { 0% { stroke-dashoffset: 164 } 88%,100% { stroke-dashoffset: 0 } }
+      .play { animation: play 5.2s cubic-bezier(0.16,1,0.3,1) infinite; }
+
+      /* "motion: OK" — the probe that says pixels changed. */
+      @keyframes ping { 0% { transform: scale(1); opacity: .55 } 100% { transform: scale(3.4); opacity: 0 } }
+      .ping { transform-origin: 908px 77px; animation: ping 2.8s ease-out infinite; }
+
+      /* The living posters. Translation only: unaffected by transform-box
+         support, which rotation and scale are not. */
+      @keyframes drift { 0%,100% { transform: translate(0,0) } 50% { transform: translate(7px,-6px) } }
+      .drift { animation: drift 9s ease-in-out infinite; }
+      .driftSlow { animation: drift 13s ease-in-out infinite reverse; }
+
+      /* Three real effects, running: a pinned horizontal track, a marquee, a
+         staggered grid. This is the part the collection is actually about. */
+      @keyframes pin { 0%,8% { transform: translateX(0) } 58%,100% { transform: translateX(-58px) } }
+      .pin { animation: pin 6.5s cubic-bezier(0.76,0,0.24,1) infinite alternate; }
+      @keyframes march { 0% { transform: translateX(0) } 100% { transform: translateX(-84px) } }
+      .marchL { animation: march 6s linear infinite; }
+      .marchR { animation: march 7.5s linear infinite reverse; }
+      @keyframes wink { 0%,100% { opacity: .18 } 45% { opacity: 1 } }
+      .dot { animation: wink 3.2s ease-in-out infinite; }
+
+      @media (prefers-reduced-motion: reduce) {
+        * { animation: none !important; }
+      }
+    </style>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <!-- ── Ground ───────────────────────────────────────────────────────── -->
+    <rect width="1200" height="600" fill="#090909"/>
+    <ellipse cx="980" cy="110" rx="400" ry="280" fill="url(#bloomV)"/>
+    <ellipse cx="250" cy="580" rx="360" ry="240" fill="url(#bloomM)"/>
+    <rect width="1200" height="600" fill="url(#grid)"/>
+
+    <!-- ══ Left column ═══════════════════════════════════════════════════ -->
+    <text x="56" y="118" font-size="11" font-weight="600" letter-spacing="2.6" fill="#0099ff">MORGUE</text>
+
+    <g fill="#ffffff" font-size="44" font-weight="500" letter-spacing="-2.2">
+      <text x="56" y="170">A drawer of</text>
+      <text x="56" y="212">clippings for</text>
+      <text x="56" y="254">motion on</text>
+      <text x="56" y="296">the web.</text>
+    </g>
+
+    <g fill="#999999" font-size="14" letter-spacing="-0.14">
+      <text x="56" y="342">Hand it a component. It captures a deterministic</text>
+      <text x="56" y="361">video preview, files it under a controlled</text>
+      <text x="56" y="380">vocabulary, and writes down how it works.</text>
+    </g>
+
+    <line x1="56" y1="416" x2="400" y2="416" stroke="#1e1e1e" stroke-width="1"/>
+
+    <g>
+      <text x="56"  y="450" fill="#ffffff" font-size="21" font-weight="600" letter-spacing="-0.6">1113/1113</text>
+      <text x="196" y="450" fill="#ffffff" font-size="21" font-weight="600" letter-spacing="-0.6">16</text>
+      <text x="304" y="450" fill="#ffffff" font-size="21" font-weight="600" letter-spacing="-0.6">0</text>
+      <g fill="#5f5f5f" font-size="9.5" letter-spacing="1.05">
+        <text x="56"  y="468">IDENTICAL FRAMES</text>
+        <text x="196" y="468">WEBGL CEILING</text>
+        <text x="304" y="468">CODE IN GRID</text>
+      </g>
+    </g>
+
+    <g>
+      <rect x="56" y="504" width="172" height="34" rx="17" fill="#141414" stroke="#262626"/>
+      <text class="mono" x="74" y="525" font-size="12.5" fill="#d6d6d6">$ pnpm morgue</text>
+      <text x="244" y="525" font-size="11.5" fill="#5f5f5f">no accounts, no cloud</text>
+    </g>
+
+    <!-- ══ The vault ═════════════════════════════════════════════════════ -->
+    <g filter="url(#liftWin)">
+      <rect x="556" y="92" width="572" height="416" rx="16" fill="#141414" stroke="#262626"/>
+    </g>
+    <line x1="572" y1="92.5" x2="1112" y2="92.5" stroke="url(#topHi)" stroke-width="1"/>
+
+    <!-- chrome -->
+    <g fill="#2e2e2e">
+      <circle cx="574" cy="110" r="3.5"/><circle cx="588" cy="110" r="3.5"/><circle cx="602" cy="110" r="3.5"/>
+    </g>
+    <rect x="624" y="101" width="190" height="18" rx="9" fill="#1c1c1c"/>
+    <text class="mono" x="634" y="114" font-size="9.5" fill="#787878">morgue.app/vault</text>
+    <text x="1112" y="114" font-size="10" fill="#5c5c5c" text-anchor="end">24 items</text>
+    <line x1="556" y1="128" x2="1128" y2="128" stroke="#1e1e1e"/>
+
+    <!-- search -->
+    <rect x="570" y="142" width="372" height="28" rx="14" fill="#0e0e0e" stroke="#262626"/>
+    <g fill="none" stroke="#6a6a6a" stroke-width="1.4">
+      <circle cx="586" cy="155" r="4.4"/>
+      <path d="M589.5 158.5 L593 162" stroke-linecap="round"/>
+    </g>
+    <text x="602" y="160" font-size="12.5" fill="#cfcfcf">the one where the panels pin and scroll sideways</text>
+    <rect class="caret" x="900" y="149" width="1.6" height="14" fill="#0099ff"/>
+
+    <rect x="952" y="142" width="88" height="28" rx="14" fill="#141414" stroke="#262626"/>
+    <text x="966" y="160" font-size="10.5" fill="#8f8f8f">kind: static</text>
+    <rect x="1048" y="142" width="64" height="28" rx="14" fill="#141414" stroke="#262626"/>
+    <text x="1060" y="160" font-size="10.5" fill="#8f8f8f">newest</text>
+
+    <!-- facets -->
+    <rect x="570" y="184" width="118" height="24" rx="12" fill="#ffffff"/>
+    <text x="582" y="200" font-size="11" fill="#000000" font-weight="500">pinned-horizontal</text>
+    <rect x="696" y="184" width="123" height="24" rx="12" fill="#161616" stroke="#262626"/>
+    <text x="708" y="200" font-size="11" fill="#8a8a8a">gsap-scrolltrigger</text>
+    <rect x="827" y="184" width="57" height="24" rx="12" fill="#161616" stroke="#262626"/>
+    <text x="839" y="200" font-size="11" fill="#8a8a8a">scroll</text>
+    <rect x="892" y="184" width="52" height="24" rx="12" fill="#161616" stroke="#262626"/>
+    <text x="904" y="200" font-size="11" fill="#8a8a8a">heavy</text>
+    <text x="956" y="200" font-size="11" fill="#565656">+ 9 more</text>
+
+    <!-- ── tile 1 · an image trail following the cursor ── -->
+    <rect x="570" y="222" width="173" height="126" rx="12" fill="#1c1c1c" stroke="#202020"/>
+    <rect x="576" y="228" width="161" height="92" rx="7" fill="#0d0d0d"/>
+    <g clip-path="url(#p1)">
+      <!-- Sits 14px lower than the arc wants to, so the head of the trail clears
+           the weight badge even at the far end of its drift. -->
+      <g class="drift" fill="#8b6cff">
+        <rect x="579" y="289" width="30" height="30" rx="6" opacity="0.12"/>
+        <rect x="600.5" y="278.5" width="27" height="27" rx="5.5" opacity="0.20"/>
+        <rect x="624" y="270" width="24" height="24" rx="5" opacity="0.30"/>
+        <rect x="647.5" y="263.5" width="21" height="21" rx="4.5" opacity="0.44"/>
+        <rect x="671" y="259" width="18" height="18" rx="4" opacity="0.62"/>
+        <rect x="692.5" y="255.5" width="15" height="15" rx="3.5" opacity="0.85"/>
+        <circle cx="716" cy="259" r="3.5" fill="#0099ff"/>
+      </g>
+    </g>
+    <rect x="691" y="234" width="40" height="13" rx="4" fill="#090909" fill-opacity="0.68"/>
+    <text x="711" y="243" font-size="7.5" letter-spacing="0.8" fill="#dcdcdc" text-anchor="middle">MEDIUM</text>
+    <rect x="576" y="329" width="76" height="6" rx="3" fill="#3a3a3a"/>
+    <rect x="693" y="329.5" width="44" height="5" rx="2.5" fill="#232323"/>
+
+    <!-- ── tile 2 · a pinned horizontal track, running ── -->
+    <rect x="755" y="222" width="173" height="126" rx="12" fill="#1c1c1c" stroke="#202020"/>
+    <rect x="761" y="228" width="161" height="92" rx="7" fill="#0d0d0d"/>
+    <g clip-path="url(#p2)">
+      <g class="pin">
+        <rect x="769" y="248" width="52" height="52" rx="5" fill="#242424"/>
+        <rect x="777" y="284" width="26" height="5" rx="2.5" fill="#4d4d4d"/>
+        <rect x="829" y="248" width="52" height="52" rx="5" fill="#2b2b2b"/>
+        <rect x="837" y="284" width="30" height="5" rx="2.5" fill="#5a5a5a"/>
+        <rect x="889" y="248" width="52" height="52" rx="5" fill="#202020"/>
+        <rect x="897" y="284" width="22" height="5" rx="2.5" fill="#464646"/>
+      </g>
+      <rect x="769" y="310" width="145" height="2" rx="1" fill="#252525"/>
+      <rect class="pin" x="769" y="310" width="58" height="2" rx="1" fill="#8b6cff"/>
+    </g>
+    <rect x="881" y="234" width="35" height="13" rx="4" fill="#090909" fill-opacity="0.68"/>
+    <text x="898.5" y="243" font-size="7.5" letter-spacing="0.8" fill="#dcdcdc" text-anchor="middle">HEAVY</text>
+    <rect x="761" y="329" width="76" height="6" rx="3" fill="#3a3a3a"/>
+    <rect x="878" y="329.5" width="44" height="5" rx="2.5" fill="#232323"/>
+
+    <!-- ── tile 3 · spotlight-orange ── -->
+    <rect x="940" y="222" width="173" height="126" rx="12" fill="#1c1c1c" stroke="#202020"/>
+    <rect x="946" y="228" width="161" height="92" rx="7" fill="url(#oBase)"/>
+    <rect class="driftSlow" x="946" y="228" width="161" height="92" rx="7" fill="url(#oA)"/>
+    <rect class="drift" x="946" y="228" width="161" height="92" rx="7" fill="url(#oB)"/>
+    <rect x="1061" y="234" width="40" height="13" rx="4" fill="#090909" fill-opacity="0.68"/>
+    <text x="1081" y="243" font-size="7.5" letter-spacing="0.8" fill="#dcdcdc" text-anchor="middle">MEDIUM</text>
+    <rect x="946" y="329" width="76" height="6" rx="3" fill="#3a3a3a"/>
+    <rect x="1063" y="329.5" width="44" height="5" rx="2.5" fill="#232323"/>
+
+    <!-- ── tile 4 · a marquee, running ── -->
+    <rect x="570" y="360" width="173" height="126" rx="12" fill="#1c1c1c" stroke="#202020"/>
+    <rect x="576" y="366" width="161" height="92" rx="7" fill="#0d0d0d"/>
+    <g clip-path="url(#p4)">
+      <g class="marchL" fill="#333333">
+        <rect x="576" y="386" width="60" height="9" rx="4.5"/>
+        <rect x="644" y="386" width="34" height="9" rx="4.5"/>
+        <rect x="686" y="386" width="52" height="9" rx="4.5"/>
+        <rect x="746" y="386" width="60" height="9" rx="4.5"/>
+        <rect x="814" y="386" width="34" height="9" rx="4.5"/>
+      </g>
+      <g class="marchR" fill="#242424">
+        <rect x="560" y="404" width="44" height="9" rx="4.5"/>
+        <rect x="612" y="404" width="62" height="9" rx="4.5"/>
+        <rect x="682" y="404" width="38" height="9" rx="4.5"/>
+        <rect x="728" y="404" width="44" height="9" rx="4.5"/>
+        <rect x="780" y="404" width="62" height="9" rx="4.5"/>
+      </g>
+      <g class="marchL" fill="#4a4a4a">
+        <rect x="576" y="422" width="38" height="9" rx="4.5"/>
+        <rect x="622" y="422" width="56" height="9" rx="4.5"/>
+        <rect x="686" y="422" width="30" height="9" rx="4.5"/>
+        <rect x="724" y="422" width="38" height="9" rx="4.5"/>
+        <rect x="770" y="422" width="56" height="9" rx="4.5"/>
+      </g>
+    </g>
+    <rect x="696" y="372" width="35" height="13" rx="4" fill="#090909" fill-opacity="0.68"/>
+    <text x="713.5" y="381" font-size="7.5" letter-spacing="0.8" fill="#dcdcdc" text-anchor="middle">LIGHT</text>
+    <rect x="576" y="467" width="76" height="6" rx="3" fill="#3a3a3a"/>
+    <rect x="693" y="467.5" width="44" height="5" rx="2.5" fill="#232323"/>
+
+    <!-- ── tile 5 · spotlight-magenta ── -->
+    <rect x="755" y="360" width="173" height="126" rx="12" fill="#1c1c1c" stroke="#202020"/>
+    <rect x="761" y="366" width="161" height="92" rx="7" fill="url(#mBase)"/>
+    <rect class="drift" x="761" y="366" width="161" height="92" rx="7" fill="url(#mA)"/>
+    <rect class="driftSlow" x="761" y="366" width="161" height="92" rx="7" fill="url(#mB)"/>
+    <rect x="881" y="372" width="35" height="13" rx="4" fill="#090909" fill-opacity="0.68"/>
+    <text x="898.5" y="381" font-size="7.5" letter-spacing="0.8" fill="#dcdcdc" text-anchor="middle">HEAVY</text>
+    <rect x="761" y="467" width="76" height="6" rx="3" fill="#3a3a3a"/>
+    <rect x="878" y="467.5" width="44" height="5" rx="2.5" fill="#232323"/>
+
+    <!-- ── tile 6 · a staggered grid ── -->
+    <rect x="940" y="360" width="173" height="126" rx="12" fill="#1c1c1c" stroke="#202020"/>
+    <rect x="946" y="366" width="161" height="92" rx="7" fill="#0d0d0d"/>
+    <g clip-path="url(#p6)" fill="#c8c8c8">
+      <circle class="dot" cx="968"  cy="392" r="3.4" style="animation-delay:0s"/>
+      <circle class="dot" cx="991"  cy="392" r="3.4" style="animation-delay:.09s"/>
+      <circle class="dot" cx="1014" cy="392" r="3.4" style="animation-delay:.18s"/>
+      <circle class="dot" cx="1037" cy="392" r="3.4" style="animation-delay:.27s"/>
+      <circle class="dot" cx="1060" cy="392" r="3.4" style="animation-delay:.36s"/>
+      <circle class="dot" cx="1083" cy="392" r="3.4" style="animation-delay:.45s"/>
+      <circle class="dot" cx="968"  cy="412" r="3.4" style="animation-delay:.09s"/>
+      <circle class="dot" cx="991"  cy="412" r="3.4" style="animation-delay:.18s"/>
+      <circle class="dot" cx="1014" cy="412" r="3.4" style="animation-delay:.27s"/>
+      <circle class="dot" cx="1037" cy="412" r="3.4" style="animation-delay:.36s"/>
+      <circle class="dot" cx="1060" cy="412" r="3.4" style="animation-delay:.45s"/>
+      <circle class="dot" cx="1083" cy="412" r="3.4" style="animation-delay:.54s"/>
+      <circle class="dot" cx="968"  cy="432" r="3.4" style="animation-delay:.18s"/>
+      <circle class="dot" cx="991"  cy="432" r="3.4" style="animation-delay:.27s"/>
+      <circle class="dot" cx="1014" cy="432" r="3.4" style="animation-delay:.36s"/>
+      <circle class="dot" cx="1037" cy="432" r="3.4" style="animation-delay:.45s"/>
+      <circle class="dot" cx="1060" cy="432" r="3.4" style="animation-delay:.54s"/>
+      <circle class="dot" cx="1083" cy="432" r="3.4" style="animation-delay:.63s"/>
+    </g>
+    <rect x="1066" y="372" width="35" height="13" rx="4" fill="#090909" fill-opacity="0.68"/>
+    <text x="1083.5" y="381" font-size="7.5" letter-spacing="0.8" fill="#dcdcdc" text-anchor="middle">LIGHT</text>
+    <rect x="946" y="467" width="76" height="6" rx="3" fill="#3a3a3a"/>
+    <rect x="1063" y="467.5" width="44" height="5" rx="2.5" fill="#232323"/>
+
+    <!-- ══ Floater A · one tile, lifted off the grid ═════════════════════ -->
+    <g transform="rotate(-4.5 536 321)">
+      <g class="bobA">
+        <g filter="url(#lift)">
+          <rect x="418" y="228" width="196" height="140" rx="14" fill="#171717" stroke="#2e2e2e"/>
+        </g>
+        <rect x="426" y="236" width="180" height="100" rx="9" fill="url(#cBase)"/>
+        <rect class="drift" x="426" y="236" width="180" height="100" rx="9" fill="url(#cA)"/>
+        <rect class="driftSlow" x="426" y="236" width="180" height="100" rx="9" fill="url(#cB)"/>
+        <line x1="434" y1="326" x2="598" y2="326" stroke="#ffffff" stroke-opacity="0.28"
+              stroke-width="2.5" stroke-linecap="round"/>
+        <line class="play" x1="434" y1="326" x2="598" y2="326" stroke="#ffffff"
+              stroke-width="2.5" stroke-linecap="round" stroke-dasharray="164" stroke-dashoffset="72"/>
+        <rect x="565" y="244" width="35" height="13" rx="4" fill="#090909" fill-opacity="0.7"/>
+        <text x="582.5" y="253" font-size="7.5" letter-spacing="0.8" fill="#e4e4e4" text-anchor="middle">HEAVY</text>
+        <rect x="426" y="346" width="92" height="7" rx="3.5" fill="#4a4a4a"/>
+        <rect x="546" y="346.5" width="52" height="6" rx="3" fill="#2a2a2a"/>
+
+        <g filter="url(#liftSm)">
+          <rect x="418" y="382" width="236" height="32" rx="16" fill="#0d0d0d" stroke="#282828"/>
+        </g>
+        <circle cx="436" cy="398" r="3.5" fill="#22c55e"/>
+        <text x="448" y="402" font-size="11.5" fill="#a5a5a5">video on hover · never live code</text>
+      </g>
+    </g>
+
+    <!-- ══ Floater B · the capture log ═══════════════════════════════════ -->
+    <g transform="rotate(3 1010 77)">
+      <g class="bobB">
+        <g filter="url(#liftSm)">
+          <rect x="884" y="54" width="252" height="46" rx="14" fill="#0f0f0f" stroke="#2a2a2a"/>
+        </g>
+        <circle class="ping" cx="908" cy="77" r="4.5" fill="none" stroke="#22c55e" stroke-width="1.4"/>
+        <circle cx="908" cy="77" r="4.5" fill="#22c55e"/>
+        <text class="mono" x="926" y="74" font-size="11.5" fill="#e2e2e2">motion: OK</text>
+        <text class="mono" x="926" y="89" font-size="9.5" fill="#6e6e6e">150 frames · 30 fps · 0 errors</text>
+      </g>
+    </g>
+
+    <!-- ══ Floater C · the contact sheet ════════════════════════════════ -->
+    <g transform="rotate(-2 739 499)">
+      <g class="bobC">
+        <g filter="url(#lift)">
+          <rect x="596" y="452" width="286" height="95" rx="12" fill="#101010" stroke="#282828"/>
+        </g>
+        <text class="mono" x="612" y="470" font-size="9.5" fill="#707070">contact.jpg — 24 frames</text>
+        <text x="866" y="470" font-size="9.5" fill="#454545" text-anchor="end">rule 5</text>
+        <!-- 24 tiles, and the light bar walks across them: a contact sheet of a
+             pinned track, which is what one of these actually looks like. -->
+        <g fill="#1a1a1a">
+          <rect x="612" y="478" width="28" height="17" rx="2"/><rect x="643" y="478" width="28" height="17" rx="2"/>
+          <rect x="674" y="478" width="28" height="17" rx="2"/><rect x="705" y="478" width="28" height="17" rx="2"/>
+          <rect x="736" y="478" width="28" height="17" rx="2"/><rect x="767" y="478" width="28" height="17" rx="2"/>
+          <rect x="798" y="478" width="28" height="17" rx="2"/><rect x="829" y="478" width="28" height="17" rx="2"/>
+          <rect x="612" y="497" width="28" height="17" rx="2"/><rect x="643" y="497" width="28" height="17" rx="2"/>
+          <rect x="674" y="497" width="28" height="17" rx="2"/><rect x="705" y="497" width="28" height="17" rx="2"/>
+          <rect x="736" y="497" width="28" height="17" rx="2"/><rect x="767" y="497" width="28" height="17" rx="2"/>
+          <rect x="798" y="497" width="28" height="17" rx="2"/><rect x="829" y="497" width="28" height="17" rx="2"/>
+          <rect x="612" y="516" width="28" height="17" rx="2"/><rect x="643" y="516" width="28" height="17" rx="2"/>
+          <rect x="674" y="516" width="28" height="17" rx="2"/><rect x="705" y="516" width="28" height="17" rx="2"/>
+          <rect x="736" y="516" width="28" height="17" rx="2"/><rect x="767" y="516" width="28" height="17" rx="2"/>
+          <rect x="798" y="516" width="28" height="17" rx="2"/><rect x="829" y="516" width="28" height="17" rx="2"/>
+        </g>
+        <!-- The mark advances 18px over 24 frames — tile pitch is 31, the mark's
+             is 31.78. Give the mark its own round pitch and by frame 8 it has
+             walked out of its own tile, which is what the first pass did. -->
+        <g fill="#6a6a6a">
+          <rect x="615.0" y="482" width="4" height="9" rx="1"/><rect x="646.8" y="482" width="4" height="9" rx="1"/>
+          <rect x="678.6" y="482" width="4" height="9" rx="1"/><rect x="710.4" y="482" width="4" height="9" rx="1"/>
+          <rect x="742.1" y="482" width="4" height="9" rx="1"/><rect x="773.9" y="482" width="4" height="9" rx="1"/>
+          <rect x="805.7" y="482" width="4" height="9" rx="1"/><rect x="837.5" y="482" width="4" height="9" rx="1"/>
+          <rect x="621.2" y="501" width="4" height="9" rx="1"/><rect x="653.0" y="501" width="4" height="9" rx="1"/>
+          <rect x="684.8" y="501" width="4" height="9" rx="1"/><rect x="716.6" y="501" width="4" height="9" rx="1"/>
+          <rect x="748.3" y="501" width="4" height="9" rx="1"/><rect x="780.1" y="501" width="4" height="9" rx="1"/>
+          <rect x="811.9" y="501" width="4" height="9" rx="1"/><rect x="843.7" y="501" width="4" height="9" rx="1"/>
+          <rect x="627.5" y="520" width="4" height="9" rx="1"/><rect x="659.3" y="520" width="4" height="9" rx="1"/>
+          <rect x="691.1" y="520" width="4" height="9" rx="1"/><rect x="722.8" y="520" width="4" height="9" rx="1"/>
+          <rect x="754.6" y="520" width="4" height="9" rx="1"/><rect x="786.4" y="520" width="4" height="9" rx="1"/>
+          <rect x="818.2" y="520" width="4" height="9" rx="1"/><rect x="850.0" y="520" width="4" height="9" rx="1"/>
+        </g>
+      </g>
+    </g>
+
+    <!-- ══ Floater D · the export bundle ════════════════════════════════ -->
+    <g transform="rotate(4 1037 493)">
+      <g class="bobD">
+        <g filter="url(#lift)">
+          <rect x="926" y="418" width="222" height="150" rx="14" fill="#111111" stroke="#2b2b2b"/>
+        </g>
+        <rect x="942" y="432" width="11" height="14" rx="2" fill="#2f2f2f"/>
+        <text class="mono" x="961" y="443" font-size="10.5" fill="#cfcfcf">morgue-bundle.md</text>
+        <g fill="none" stroke="#5c5c5c" stroke-width="1.2">
+          <rect x="1112" y="432" width="10" height="12" rx="2"/>
+          <rect x="1116" y="436" width="10" height="12" rx="2" fill="#111111" stroke="#7d7d7d"/>
+        </g>
+        <line x1="942" y1="456" x2="1132" y2="456" stroke="#212121"/>
+        <rect x="942" y="468" width="140" height="5.5" rx="2.75" fill="#363636"/>
+        <rect x="942" y="482" width="112" height="5.5" rx="2.75" fill="#262626"/>
+        <rect x="942" y="496" width="158" height="5.5" rx="2.75" fill="#262626"/>
+        <rect x="942" y="510" width="88"  height="5.5" rx="2.75" fill="#262626"/>
+        <rect x="942" y="526" width="78" height="19" rx="9.5" fill="#171717" stroke="#2a2a2a"/>
+        <text class="mono" x="954" y="539" font-size="9" fill="#8f8f8f">gsap ^3.13</text>
+        <rect x="1028" y="526" width="44" height="19" rx="9.5" fill="#1b1310" stroke="#43241a"/>
+        <text class="mono" x="1040" y="539" font-size="9" fill="#ff7a3d">paid</text>
+      </g>
+    </g>
+  </g>
+</svg>

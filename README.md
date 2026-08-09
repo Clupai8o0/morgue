@@ -1,3 +1,8 @@
+![An exploded view of the morgue vault — a browser window holding a searchable grid of captured
+UI animations, with a preview card lifted off the surface, a capture log reading "motion: OK",
+a 24-frame contact sheet and an agent-ready export bundle floating around
+it.](./assets/banner.svg)
+
 # morgue
 
 A private reference collection of UI components and web animations.
