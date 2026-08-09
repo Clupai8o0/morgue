@@ -5,6 +5,16 @@ Written to resume later. Supersedes the 2026-08-07 handoff entirely.
 Read [CLAUDE.md](../CLAUDE.md) first — it is the folder contract and it is
 authoritative. This file is a snapshot; that one is the rules.
 
+> [!IMPORTANT]
+> **The next piece of work is the multi-tenant pivot, and its brief is
+> [MULTI-TENANT.md](./MULTI-TENANT.md).** Many accounts, each with a private
+> vault; Google + GitHub + email/password; waitlist-gated invites; an admin
+> dashboard. It reverses `DECISIONS.md` § "Waitlist, not signup" on purpose.
+> Read it before touching `auth.ts`, `proxy.ts`, `db/schema.ts` or
+> `lib/vault-data.ts` — and read §2 first, because the 12 items currently in the
+> vault are paid third-party templates and the tenancy boundary is a licensing
+> obligation, not a permission check.
+
 [STATUS.md](./STATUS.md) and [FINDINGS.md](./FINDINGS.md) were reconciled this
 session and are accurate as of this date.
 

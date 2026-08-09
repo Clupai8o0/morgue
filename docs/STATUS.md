@@ -3,6 +3,9 @@
 Last updated: 2026-08-08.
 
 Rationale for the architecture is in [DECISIONS.md](./DECISIONS.md).
+The next major change — multi-tenant accounts — is specified in
+[MULTI-TENANT.md](./MULTI-TENANT.md) and **not started**. Everything below
+describes the single-owner system as it stands.
 Measurements are in [FINDINGS.md](./FINDINGS.md).
 The session snapshot this was reconciled against is [HANDOFF.md](./HANDOFF.md).
 
