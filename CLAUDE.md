@@ -28,6 +28,18 @@ pnpm check              # verifies the item page runs in the BUILT site
 it from `/item/<slug>/`. Those resolve asset paths differently, so **a clean capture does not
 prove the item page works.** This has produced two real bugs already; the check catches them.
 
+It exits non-zero when a page is broken, and that was added on 2026-08-09 — for its whole life
+before then it counted the failures, printed the number and exited 0, so `pnpm check` could not
+fail and `pnpm test` (an `&&` chain ending in `fixtures:check`) was green with every item page
+broken. If you are reading a green run from an older transcript, it means nothing. A *missing*
+build fails too; an *empty* one does not, because a red that no action can clear is how a gate
+stops being read.
+
+`pnpm test` builds `fixtures/` into **`site-fixtures/`**, not `site/`. The two shared one
+directory until 2026-08-09, which meant a test run replaced the vault's index with 11 fixture
+records and — once `build.mjs` learned to prune — deleted every real slug out of `site/`. Both
+`build.mjs` and `check.mjs` derive the tree from `MORGUE_SRC`; keep them in step.
+
 ## meta.json
 
 Use the controlled vocabulary. Free-text tags rot into `scroll`, `scrolling`, `scroll-anim`
@@ -251,10 +263,21 @@ React `useEffect` works.
 13. **`pnpm verify:auth` after touching anything under identity.** That is
     `auth.ts`, `proxy.ts`, `lib/users.ts`, `lib/link-policy.ts`,
     `lib/password.ts`, `lib/auth-limit.ts`, `lib/auth-tokens.ts`,
-    `db/schema.ts`, or `app/api/account/*`.
+    `lib/plan.ts`, `db/schema.ts`, or `app/api/account/*`.
+
+    **A new route under `/api/account/` is PUBLIC until it is named in
+    `proxy.ts`, in both `PROTECTED` and `ownerOnly`.** That is the wrong default
+    and it is kept deliberately, because the alternative — protect the prefix,
+    list the exceptions — fails the other way, locking out the person who
+    cannot sign in and is trying to reach `reset` or `verify`. Both lists are
+    short; `bin/verify-share.mjs` asserts every private path is refused a share
+    cookie, so add a line there whenever you add one here.
 
     It starts a **throwaway Postgres cluster with `initdb`** and a production
-    `next start` against it, then signs in over real HTTP. That is not
+    `next start` against it, then signs in over real HTTP. Set
+    `MORGUE_TEST_DATABASE_URL` to skip `initdb` and use a database you already
+    have — a container is enough, and it must be one the suite may take over.
+    That is not
     ceremony: every interesting auth bug is a query returning the wrong row —
     a suspended user who still gets in, a lockout counting the wrong column, a
     reset token that works twice — and none of it is visible against a mock.
@@ -295,3 +318,20 @@ React `useEffect` works.
 `items/`, `out/` and `site/` are gitignored, deliberately — third-party licensed source and
 gigabytes of media. Do not add exceptions, do not `git add -f` them, and do not move collected
 code into `fixtures/`. `fixtures/` is only for items written from scratch for this repo.
+
+**That rule now has a licence behind it.** As of 2026-08-09 the root `LICENSE` grants MIT over
+`fixtures/` — because the public landing page says so, and it was not true until then. The scope
+section of that file explicitly covers nothing in `items/` or `archives/`. So moving collected
+code into `fixtures/` is no longer just untidy: it relicenses somebody else's paid work under
+our name, in a file that says we may.
+
+**`pnpm publish:r2 --public` is an allowlist**, and keep it one. It publishes media only, for
+items that are `showcase: true` **and** `own`/`mit`, and it refuses to run without
+`site/items.json` to check against. It never sends the data payload, because `facets.json`
+indexes the whole private collection and `site/data/items/*.json` inline the source. Before this
+existed the flag switched bucket and changed nothing else.
+
+`publish.mjs` filters every job through the index in both modes. `out/` is deliberately never
+pruned — `preview.mp4` is the archival record (rule 11) and `out/` is shared with fixture
+captures — so it accumulates retired slugs, and the index is what keeps them out of the bucket.
+Nothing deletes remote objects; that is still open.

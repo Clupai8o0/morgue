@@ -74,9 +74,21 @@ splits the codebase, adds CORS, needs its own auth, and **can never run
 Playwright or ffmpeg** — which forecloses server-side capture permanently.
 Vercel Functions can (5GB packages), so this keeps that door open.
 
-## Postgres holds two tables and never the vault
+## Postgres holds identity, and not the vault
 
-`waitlist` and `cli_tokens`. Browsing never touches a database.
+Browsing never touches a database.
+
+> **Amended 2026-08-09.** This section used to be titled "Postgres holds two
+> tables" and named them: `waitlist` and `cli_tokens`. There are **eight** —
+> the multi-tenant pivot added `users`, `accounts`, `sessions`,
+> `verificationTokens` and `authAttempts`, and share links added
+> `share_links` before that. The principle survived the count, so only the
+> count was wrong, which is exactly the kind of stale number that reads as
+> current. The live split is documented at the top of `web/src/db/schema.ts`,
+> which is the copy to trust: identity is transactional state and lives here;
+> the owner's collection still comes from `items/` through the capture
+> pipeline. Phase 3 of [MULTI-TENANT.md](./MULTI-TENANT.md) will put *other
+> people's* items in Postgres — the owner's stay on the filesystem contract.
 
 Items build from `items/` on disk into static JSON. Putting the collection in
 Postgres would create a second source of truth that drifts from the folder
@@ -109,6 +121,62 @@ non-licensees, which is precisely what the repo was structured to avoid.
 > owner-only; vaults are private by default with no discovery surface, and the
 > tenancy boundary lives in the storage key and a `NOT NULL` owner column
 > rather than in query logic. The paragraph above is why.
+
+## Free with hard caps, and the waitlist stays
+
+Decided 2026-08-09, settling decision 4 of [MULTI-TENANT.md](./MULTI-TENANT.md).
+
+No billing. Every account is free and bounded by a **hard cap** on item count
+and stored bytes, and the **waitlist remains the gate** on who gets an account
+at all. Both, not either.
+
+The reasoning is that the two mechanisms answer different questions and the
+failure modes they prevent are different. The waitlist controls *who* — it is
+the thing standing between this deployment and arbitrary strangers uploading
+arbitrary code, which is the liability the reversed decision above accepted in
+principle and would rather meet slowly. The cap controls *how much* — R2 is
+billed by what is stored and served, so without a ceiling the bill is a
+function of other people's behaviour, and an invited user is not thereby a
+trustworthy one.
+
+Billing was rejected rather than deferred-by-accident: taking money means
+invoicing, refunds, tax, and a support obligation that arrives immediately and
+does not pause. None of that is the point of this project. A cap plus a
+**"request upgrade"** button that emails the owner buys the same outcome for
+users who genuinely need more, and the answer is a human being rather than a
+payment page. If that mail volume ever becomes annoying, that is evidence for
+billing — and it is evidence obtained without having built it first.
+
+The cost, stated: raising a cap is manual, so it is slow, and it does not scale
+past the point where the owner reads the mail. That is a deliberate ceiling on
+growth and not an oversight.
+
+## The fixtures are MIT, and the grant is scoped on purpose
+
+Decided 2026-08-09. `LICENSE` at the repo root.
+
+The landing page has always told visitors the showcase pieces are "authored
+from scratch and MIT-licensed, so they can be shown". That was not true: all
+eleven fixtures carried `"license": "own"` and no `LICENSE` file existed
+anywhere in the repository. The claim was public, live, and unsupported — a
+licence grant asserted to strangers with nothing behind it.
+
+Two ways to close a gap like that: retract the claim, or make it true. Made it
+true, because it costs nothing real — `fixtures/` is the only code here written
+from scratch for this repository, it exists to be shown, and its whole purpose
+on that page is to be the thing that *can* be shown.
+
+The scope section in `LICENSE` is the load-bearing part and is deliberately
+narrow. It grants MIT over `fixtures/` and states in the same breath that it
+covers nothing in `items/` or `archives/` — bought CodeGrid source, which is
+not ours to relicense and whose redistribution is the failure this entire
+repository is arranged around. `bin/` and `web/` are excluded too and stay all
+rights reserved, because open-sourcing the tool is a separate question that is
+still open in [LOCAL-MODE.md](./LOCAL-MODE.md), and a root `LICENSE` file with
+no scope statement would have quietly answered it.
+
+A blanket MIT file at the root of a repository that also contains paid
+third-party source would have been a worse bug than the one it fixed.
 
 ## Auth fails closed in production, open in development
 

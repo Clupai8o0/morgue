@@ -2,6 +2,12 @@
 
 Written to resume later. Supersedes the 2026-08-08 handoff entirely.
 
+> [!NOTE]
+> **Amended later the same day, on a second machine (Fedora).** `main` was
+> fast-forwarded to `multi-tenant-identity`, self-service account management and
+> the free-tier caps were built, and three gates that could not fail were fixed.
+> See [What changed in the second session](#what-changed-in-the-second-session).
+
 Read [CLAUDE.md](../CLAUDE.md) first — it is the folder contract and it is
 authoritative. This file is a snapshot; that one is the rules.
 
@@ -25,18 +31,16 @@ number in it was re-measured rather than carried forward.
 
 ## State in one screen
 
-Branch **`multi-tenant-identity`**, 5 commits ahead of `main`. Working tree
-clean. Both branches are now **pushed** to `origin` — `main` at `0bad44f`,
-`multi-tenant-identity` tracking `origin/multi-tenant-identity`. They were
-unpushed for most of this session; see
-[Moving to another device](#moving-to-another-device) for what git does *not*
-carry.
+Branch **`main`**, which was fast-forwarded to `multi-tenant-identity` on the
+Fedora machine — that merge is **local and unpushed**; `origin/main` is still at
+`0bad44f`. See [Moving to another device](#moving-to-another-device) for what git
+does *not* carry.
 
 | | |
 |---|---|
 | items | 12 · `items/` 10 MB · all `license: paid`, all CodeGrid |
 | archives | 4 · `archives/` **274 MB** — `backrooms` alone is 170 |
-| fixtures | 11 · every one `license: "own"` |
+| fixtures | 11 · every one `license: "mit"` under the root `LICENSE` |
 | `out/` 40 MB · `site/` 212 MB | both regenerable |
 | production | Neon (8 tables), R2 (220 objects / 22.3 MB), 1 account |
 
@@ -48,8 +52,8 @@ pnpm build         12 items → site/  (pruned 33 orphaned paths, 5.1MB)
 pnpm check         all 12 item pages run, 33 internal links followed
 pnpm web:build     compiles, lists ƒ Proxy (Middleware)
 pnpm verify:web    10/10   ← now brings its own Postgres and server
-pnpm verify:share  26/26
-pnpm verify:auth   84/84   ← new this session
+pnpm verify:share  26/26   ← now 33 assertions; see the second session
+pnpm verify:auth   84/84   ← now 128 assertions; see the second session
 ```
 
 Plus, against the **live domain**: the gate holds on `/vault`, `/admin` and
@@ -239,8 +243,69 @@ the `## Determinism` and `## Per-item cost` sections.
 
 ---
 
+## What changed in the second session
+
+Same day, different machine — a fresh Fedora clone with **no collection on
+disk**, which is the ordinary state of a second device (see *Moving to another
+device*). Everything below was therefore verified against `fixtures/` and a
+containerised Postgres rather than the real vault.
+
+**`main` was fast-forwarded to `multi-tenant-identity`, locally.** `origin/main`
+is still at `0bad44f` — **the merge and everything since is unpushed.**
+
+**Three gates that could not fail.**
+
+1. `bin/check.mjs` counted broken pages and exited 0 regardless, so `pnpm check`
+   and therefore `pnpm test` could not go red. Now sets `process.exitCode`.
+   Proven both ways on this machine: 2 deliberately broken fixture pages → exit
+   1; after `pnpm fixtures:build`, 11/11 → exit 0.
+2. `pnpm publish:r2 --public` switched bucket and changed nothing else — one
+   flag from publishing paid source, including `site/data/items/*.json`, which
+   inline it. Now an `own`/`mit` + showcase allowlist, media only, failing closed.
+3. `pnpm test` **deleted the real collection from `site/`**. `SITE` was fixed
+   while `MORGUE_SRC` was not, so `fixtures:site` ran the prune with the 11
+   fixture slugs as `keep`. Fixtures now build into `site-fixtures/`.
+
+**`publish.mjs` now filters every job through `site/items.json`.** The comment
+justifying the 2026-08-08 prune claimed `publish.mjs` walks `site/`; it walks
+`out/` and `site/data`, so the retired-paid-media hazard was never actually
+closed. `out/` is deliberately not pruned — `preview.mp4` is the archival record
+and `out/` is shared with fixture captures.
+
+**The MIT claim on the landing page was made true**, narrowly: root `LICENSE`
+covering `fixtures/` only, explicitly not `items/`, `archives/`, `bin/` or
+`web/`.
+
+**Self-service account management and free-tier caps.** Migration `0003`
+(`users.plan`, `upgrade_requests`); `/account` gains rename, address change,
+sign out everywhere, export and delete; `/upgrade` publishes the caps and
+records requests. `pnpm user rm` was rewired onto the same delete ordering —
+it was a bare `delete from users`, which left share links live.
+
+**`verify:auth` 84 → 128, and it can now run without Postgres installed.** Both
+it and `bin/lib/test-stack.mjs` honour `MORGUE_TEST_DATABASE_URL`, so a throwaway
+container works:
+
+```
+podman run -d --rm --name morgue-verify-pg \
+  -e POSTGRES_PASSWORD=verify -e POSTGRES_DB=morgue_verify \
+  -p 55432:5432 docker.io/library/postgres:16-alpine
+MORGUE_TEST_DATABASE_URL='postgres://postgres:verify@127.0.0.1:55432/morgue_verify' \
+  pnpm verify:auth
+```
+
+**What was NOT verified here, and why.** `pnpm verify:share` asserts against real
+slugs (`blunt-template`, `gooey-text-reveal`) that this clone does not have, so
+its 7 new refusal assertions are **written but unrun**. `pnpm capture` cannot run
+at all: Fedora's `ffmpeg-free` has no libx264 and `bin/capture.mjs` hardcodes
+`-c:v libx264`; `--use-angle=metal` is an Apple backend besides. Run both on the
+Mac.
+
 ## Next moves, in the order I would do them
 
+0. **Push, and run `pnpm verify:share` on the Mac.** `main` is ahead of
+   `origin/main` by everything above, and 7 new share-refusal assertions have
+   never executed. Both are one command each on a machine with the collection.
 1. **Register the production OAuth callbacks.**
    `https://morgue.clupai.com/api/auth/callback/github` and `.../google`. Until
    these exist neither button works, and no real OAuth round trip has ever

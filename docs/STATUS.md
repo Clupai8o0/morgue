@@ -150,8 +150,10 @@ landing page and a private vault — then the first real ingest.
 | Preview ladder — xs 200w, sm 360w | xs −85%, sm −61%; grid pulls 360×226 |
 | Extract previews in the relations strip | 3 thumbnails, all requesting `preview-xs.mp4` |
 | Preview loading state | held the response 4s in Playwright; appears, then clears on paint |
-| **Read-only share links** | **`pnpm verify:share` 26/26 against a production build** |
-| **Accounts in Postgres; GitHub + Google + email/password** | **`pnpm verify:auth` 84/84 against a throwaway `initdb` cluster** |
+| **Read-only share links** | **`pnpm verify:share` 33/33 against a production build** |
+| **Accounts in Postgres; GitHub + Google + email/password** | **`pnpm verify:auth` 128/128 against a throwaway Postgres** |
+| **Self-service account management** | same suite — rename, move address, sign out everywhere, export, delete |
+| **Free-tier caps and `/upgrade`** | same suite — page gated, request deduped, owner emailed once |
 | **Lockout, session revocation, password reset, email verification** | same suite — reset and verification run end to end through the emailed link |
 | **One account, three sign-in methods** | same suite — connecting a provider under a *different* address links rather than forking the account |
 | **The last sign-in method cannot be disconnected** | same suite — a password counts as one |
@@ -166,8 +168,8 @@ pnpm build         12 items → site/   (pruned 33 orphaned paths, 5.1MB)
 pnpm check         all 12 item pages run, 33 internal links followed
 pnpm web:build     compiles, lists ƒ Proxy (Middleware)
 pnpm verify:web    10/10 — now self-contained, see below
-pnpm verify:share  26/26 against its own production server
-pnpm verify:auth   84/84 against its own production server AND its own Postgres
+pnpm verify:share  33/33 against its own production server
+pnpm verify:auth   128/128 against its own production server AND its own Postgres
 ```
 
 **`pnpm verify:web` was passing for the wrong reason and no longer is.** It ran
@@ -190,10 +192,12 @@ and is refused `/admin` and `/api/share`, that an item link cannot reach any
 other item or its media, and that forged, scope-escalated, malformed and
 expired tokens are all rejected.
 
-**`pnpm test` rebuilds `site/` from `fixtures/` and does not clean up.** Run
-`pnpm build` after it or the vault serves 11 fixture records instead of the real
-6. That is the same "`build.mjs` never deletes" gap listed below, met from the
-other direction.
+**`pnpm test` no longer touches `site/` at all.** It builds `fixtures/` into
+`site-fixtures/` and checks that tree. The two used to share one directory,
+which meant a test run replaced the vault's index with 11 fixture records — and,
+once `build.mjs` learned to prune, *deleted all 12 real slugs* as a side effect
+of running the tests. `bin/check.mjs` derives the same path from the same
+`MORGUE_SRC`, so `pnpm test` checks what it just built.
 
 Caveat on the R2 dry-run figure above: **a large share of it is orphaned fixture media.**
 `build.mjs` never deletes from `site/`, which is now the most consequential gap in the
@@ -217,6 +221,79 @@ The cost, stated where it cannot be missed: **a signed token cannot be
 un-issued.** Revocation is checked at redemption and the cookie it mints lasts
 an hour, so revoking takes effect within an hour, not instantly. Rotating
 `AUTH_SECRET` is the break-glass and kills everything at once.
+
+## Three gates that could not fail, and one licence that was not true — 2026-08-09
+
+- **`pnpm check` could never fail.** It counted broken pages into `bad`, printed
+  the number, and exited 0. Since `pnpm test` is an `&&` chain ending in
+  `fixtures:check`, the whole suite was green with every item page broken — and
+  this is the gate CLAUDE.md calls not optional, and the only thing that catches
+  the `assetPrefix`/`basePath` bug that cost `blunt-preloader` its place. It now
+  sets `process.exitCode = 1`. A *missing* build also fails ("run `pnpm build`
+  first" is an instruction that clears the red); an *empty* one does not, because
+  a permanent red nobody can clear is how a gate gets ignored.
+
+- **`pnpm publish:r2 --public` switched the bucket and nothing else.** The job
+  list was identical, so it was one flag from uploading every paid item's media
+  and `site/data/items/*.json`, which inline the export source verbatim. There is
+  now a licence gate: showcase-flagged **and** `own`/`mit` only, media only, no
+  data payload, and it fails closed with no index. Never run in anger, in either
+  form.
+
+- **`pnpm test` deleted the collection.** Covered under the `build.mjs` gap
+  below.
+
+- **The landing page claimed a licence that did not exist.** `page.tsx` told
+  visitors the showcase pieces were "authored from scratch and MIT-licensed",
+  while all eleven fixtures said `"license": "own"` and the repo had no `LICENSE`
+  file. Made true rather than retracted: `LICENSE` now grants MIT over
+  `fixtures/` and the eleven `meta.json` say `mit`. **The scope section is the
+  load-bearing part** — it grants nothing over `items/` or `archives/` (bought
+  source, not ours to relicense) and nothing over `bin/` or `web/`, which stay
+  all rights reserved pending [LOCAL-MODE.md](./LOCAL-MODE.md). A blanket MIT at
+  the root of a repository that also holds paid third-party source would have
+  been a worse bug than the one it fixed.
+
+## Accounts can now manage themselves — 2026-08-09
+
+`/account` used to be provider link/unlink plus a password. It now also does
+rename, move-your-address, sign out everywhere, export, and delete — and there
+is a `/upgrade` page carrying the caps. Migration `0003` adds `users.plan` and
+`upgrade_requests`. All of it is covered by `pnpm verify:auth`, which went
+84 → **128** assertions.
+
+Four things worth knowing, because each is a decision rather than an
+implementation detail:
+
+- **Deleting an account REVOKES its share links; it never deletes the rows.** A
+  share token is valid because it is *signed*, and `app/s/[token]` lets an
+  unknown `jti` through by design — so removing a departing user's rows would
+  have re-enabled every link they ever revoked. The same six-step ordering now
+  backs `pnpm user rm`, which until today was a bare `delete from users` and was
+  therefore the path that quietly left those links live.
+- **An email change writes nothing until the new mailbox answers.** An address
+  on a `users` row is an identity claim — `link-policy.ts` attaches a verified
+  OAuth sign-in to whichever row holds it — so parking an unverified address
+  means the real owner's Google sign-in lands inside your vault. A typo
+  therefore costs an email, not an account.
+- **The last active admin cannot delete themselves** (409). `/admin` 404s for
+  non-admins, so allowing it strands the deployment.
+- **Caps are published; usage mostly cannot be measured.** See below.
+
+**`/upgrade` shows the caps and refuses to invent the usage.** Free is 25 items,
+1 GB, 10 share links; admins are exempt. Only the share-link count is
+attributable to a person today — items and bytes need `vaultItems.ownerId` and
+an R2 list call that `lib/r2.ts` does not have, both of which are phase 3. So
+`usageFor()` returns `number | null` where null means *cannot be known*, and the
+page renders "not measured yet" rather than `0 of 25`. Nothing is enforced yet
+because there is no per-user write path to enforce against;
+[MULTI-TENANT.md](./MULTI-TENANT.md) §5.1 carries the detail and the
+fail-closed requirement for when it lands.
+
+Requesting an upgrade writes a row and *then* mails the owner, in that order,
+because `notifyUpgradeRequest` swallows its failures — with `RESEND_API_KEY`
+unset the request is still recorded and `/admin` says in as many words that
+nobody was emailed. An empty inbox is not evidence that nobody asked.
 
 ## In production
 
@@ -323,18 +400,25 @@ Ordered by how much they cost now, not how interesting they are.
   reported *"pruned 33 orphaned path(s) (5.1MB)"*, which is `pnpm test` having
   left its 11 fixture slugs behind, exactly as predicted.
 
-  Worth keeping the reason on file, because it was the gap with a correctness
-  edge rather than a tidiness one: `publish.mjs` walks `site/` rather than the
-  index, so before the prune a real upload shipped every orphan and nothing
-  would ever have removed them from the bucket. After `items/blunt-preloader`
-  was retired, `site/item/blunt-preloader/` was still there and still
-  publishable — a `publish:r2` run would have uploaded the media of a **retired
-  paid template**. The first real publish happened on 2026-08-09 and shipped
-  220 objects, all of them in the index.
+  **The reasoning recorded with that fix was wrong, and the correctness edge it
+  claimed to close was still open until 2026-08-09.** The comment said
+  `publish.mjs` walks `site/`. It does not — it walks `out/` for media and
+  `site/data` for the payload, so pruning `site/media` never had any bearing on
+  what gets uploaded. `out/` is deliberately never pruned (`preview.mp4` is the
+  archival record under rule 11, and `out/` is shared with fixture captures), so
+  it accumulates every slug ever captured, retired ones included.
 
-  **`pnpm test` still leaves fixtures in `site/` and still needs a `pnpm build`
-  after it.** The prune cleans up on the next build rather than preventing the
-  mess, which is the right trade but not the same as fixing it.
+  Closed properly now: **`publish.mjs` filters every job through
+  `site/items.json`**, in both modes, and refuses to run at all without it. A
+  slug absent from the index is stale capture output and does not go up; the run
+  names each one rather than skipping quietly.
+
+  Still open, and not fixed here: **nothing deletes remote objects.** Neither
+  the prune nor the index filter can recall what is already in the bucket.
+
+  ~~**`pnpm test` still leaves fixtures in `site/`.**~~ **Closed 2026-08-09.**
+  `SITE` now derives from `MORGUE_SRC`, so fixtures build into `site-fixtures/`
+  and the two trees never meet.
 
 - **Asset waste — measured, and now half-addressed.** The 2026-08-07 figure was
   62 MB across three items with 21.6 MB recoverable by content-dedup alone.

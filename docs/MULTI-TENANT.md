@@ -14,8 +14,21 @@ Written 2026-08-09 to be picked up cold; phase status updated the same day.
 > 3. Consequently **the existing paid collection stays owner-only**, as §2
 >    requires.
 >
-> Decisions 4 (free or paid) and 5 (GitHub OAuth previews) are still open and
-> are not blocking phase 3.
+> 4. **Free, with hard caps, and the waitlist stays.** Decided 2026-08-09. No
+>    billing at all; every account is capped on items, stored bytes and
+>    outstanding share links; the waitlist remains the gate on who gets an
+>    account. The upgrade path is a person: `/upgrade` records a request and
+>    emails the owner, who raises `users.plan`. Caps are constants in
+>    `web/src/lib/plan.ts`; the tier is `users.plan`. Reasoning in
+>    [DECISIONS.md](./DECISIONS.md) § "Free with hard caps, and the waitlist
+>    stays". **Admins are exempt** — a deliberate exception, with its cost
+>    stated in `capsFor()`.
+>
+> Decision 5 (GitHub OAuth previews) is still open and is not blocking phase 3.
+>
+> **What decision 4 did NOT settle: enforcement.** The caps are published and
+> the request flow works, but nothing checks them, because there is no per-user
+> write path to check. Two of the three cannot even be measured — see §5.1.
 
 Read [CLAUDE.md](../CLAUDE.md) first — the folder contract and rules 1–12 still
 apply and this document does not supersede them. [STATUS.md](./STATUS.md) is
@@ -76,7 +89,7 @@ engineering phases below. They are listed so nobody discovers them at deploy.
 |---|---|---|
 | Auth.js + GitHub | built, never run with real credentials | allowlist in an env var; **no user table, no adapter, JWT sessions** |
 | Waitlist table + API + admin review | built, validation paths only | rows exist; nothing converts one into an account |
-| Share links (`lib/share.ts`) | built, **`verify:share` 24/24 in production mode** | scoped to `vault`/`item`; has no owner dimension |
+| Share links (`lib/share.ts`) | built, **`verify:share` 33/33 in production mode** | scoped to `vault`/`item`; has no owner dimension |
 | Admin page | waitlist review + share-link inventory | no user management |
 | Vault data | static JSON built by `bin/build.mjs`, read from disk or R2 | **one global index, no owner column anywhere** |
 | Media | R2 private bucket, one-hour signed URLs via `/api/media` | flat keys, no per-user namespace |
@@ -147,6 +160,45 @@ migration per vocabulary term is how it ossifies.
 > The `items/` folder contract does **not** disappear. It stays as the owner's
 > local ingest path and as the fixture pipeline. §7 is about what everyone else
 > gets.
+
+### 5.1 Plans and caps — built, but only half of one can be measured
+
+Decision 4 landed on 2026-08-09, so this part exists:
+
+```
+users.plan          free | extended   (text, default 'free')     migration 0003
+upgradeRequests     id, userId → users.id (CASCADE), note,
+                    status ('pending' | 'granted' | 'declined'),
+                    createdAt, reviewedAt                        migration 0003
+```
+
+`web/src/lib/plan.ts` holds the numbers — free is 25 items, 1 GB, 10 share
+links; extended is what a granted request moves you to. `/upgrade` shows them
+and records a request; `/admin` grants it; admins are exempt from caps.
+
+**Nothing is enforced, and the honest reason is that there is nothing to
+enforce against.** There is still no per-user write path — no `vaultItems`, no
+`ownerId`, no upload — so nobody can exceed a cap because nobody can store
+anything. That arrives with the rest of phase 3.
+
+Worse, and this is the part worth carrying forward: **two of the three caps
+cannot currently be measured at all.**
+
+| Metric | Measurable today | Why not |
+|---|---|---|
+| Share links | **yes** | `share_links.createdBy` already holds a user id |
+| Items | no | needs `vaultItems.ownerId` |
+| Stored bytes | no | needs `u/<userId>/` keys **and** a list/size call — `lib/r2.ts` has neither, only `getObjectText` and `signMediaUrl` |
+
+So `usageFor()` returns `number | null` and null means *cannot be known*, never
+zero. `/upgrade` renders those rows as "not measured yet". This is deliberate
+and should survive phase 3 review: `0 of 25 items` is a specific claim, it is
+wrong, and someone will plan against it.
+
+When enforcement does land it must **fail closed** — a cap check that cannot
+reach the database refuses. Do not copy `lib/auth-limit.ts`, which fails open on
+purpose; that is argued from "the thing behind this check is still a password",
+and there is nothing behind a quota check but the bill.
 
 ## 6. Auth — three providers
 
@@ -323,8 +375,8 @@ Each ends at a verification gate. Do not start the next until the gate is green.
 
 | # | Phase | Gate |
 |---|---|---|
-| 1 ✅ | Users/accounts/sessions schema + adapter; `AUTH_ALLOWED_LOGINS` deleted; `pnpm user` CLI creates the first account | `pnpm verify:web` 10/10, `pnpm verify:share` 24/24, `pnpm web:build` lists `ƒ Proxy (Middleware)` |
-| 2 ✅ | Google provider + Credentials, verification, reset, rate limiting; account-linking policy in `lib/link-policy.ts` | **`pnpm verify:auth` 66/66** against a throwaway `initdb` cluster and a production `next start` |
+| 1 ✅ | Users/accounts/sessions schema + adapter; `AUTH_ALLOWED_LOGINS` deleted; `pnpm user` CLI creates the first account | `pnpm verify:web` 10/10, `pnpm verify:share` 33/33, `pnpm web:build` lists `ƒ Proxy (Middleware)` |
+| 2 ✅ | Google provider + Credentials, verification, reset, rate limiting; account-linking policy in `lib/link-policy.ts` | **`pnpm verify:auth` 128/128** against a throwaway Postgres and a production `next start` |
 | 3 | Tenancy boundary: `ownerId` everywhere, R2 re-key, `/api/media` derives user from session | **second-account isolation test** — the §2 constraint, automated |
 | 4 | Ingest for option C (+ quotas) | a second account creates a `reference` item end to end |
 | 5 | Invites: token, `/invite/<token>`, invite-only `signIn` callback | invite is single-use, expires, and cannot be replayed as a share token |
