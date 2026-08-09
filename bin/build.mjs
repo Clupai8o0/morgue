@@ -9,8 +9,18 @@ import { fileURLToPath } from 'node:url'
 import { VENDOR, ARCHIVE_PREFIX, archiveEntry } from './vendor.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const SITE = path.join(ROOT, 'site')
 const SRC = process.env.MORGUE_SRC || 'items'
+
+// The output tree follows the source tree. These used to be one directory, and
+// SITE being fixed while SRC was not is what made `pnpm test` destructive: it
+// built fixtures/ into the same site/, so the vault's index became 11 fixture
+// records, and once the prune below existed the same run deleted all 12 real
+// slugs. A green suite that breaks the site it just tested is a bad shape, and
+// no amount of "remember to run pnpm build afterwards" fixes it — so they are
+// separate trees and the prune can be unconditional. bin/check.mjs derives the
+// same path from the same variable; serve, export and publish are only ever
+// interested in the real one.
+const SITE = path.join(ROOT, SRC === 'items' ? 'site' : 'site-fixtures')
 
 const slugs = (await readdir(path.join(ROOT, SRC), { withFileTypes: true }))
   .filter((d) => d.isDirectory())
@@ -330,18 +340,35 @@ for (const it of items) {
 // build.mjs used to copy and never delete, which was the worst gap in the
 // pipeline for two reasons that are not about disk.
 //
-// 1. RETIRING AN ITEM DID NOT UNPUBLISH IT. bin/publish.mjs walks site/, not
-//    the index, so a deleted item's media stayed staged for upload to a bucket
-//    nothing would ever clean. When blunt-preloader was retired its media sat
-//    there until it was removed by hand — that is paid third-party source one
-//    `pnpm publish:r2` away from a bucket.
-// 2. `pnpm test` builds fixtures/ into this same site/, so every test run left
+// 1. RETIRING AN ITEM DID NOT UNPUBLISH IT. When blunt-preloader was retired
+//    its media sat here until it was removed by hand — paid third-party source
+//    staged for a bucket.
+// 2. `pnpm test` built fixtures/ into this same site/, so every test run left
 //    11 fixture slugs behind. items/ had 12 slugs against 23 in site/item.
 //
+// Both are closed, but be precise about what this block does and does not do,
+// because the original comment here was wrong in a way that made the first
+// problem look solved when it was not:
+//
+//   * It claimed bin/publish.mjs walks site/. It does not — it walks out/ for
+//     media and site/data for the payload. Pruning site/media therefore never
+//     stopped a retired item's media from uploading. What stops it is the index
+//     filter in publish.mjs, which is where that fix actually lives. out/ is
+//     deliberately NOT pruned here: preview.mp4 is the archival record (rule
+//     11) and out/ is shared with fixtures, so a prune keyed on this build's
+//     slugs would let `pnpm test` delete every real preview.
+//   * It claimed site/archive/<name> is cleaned by the archive loop above. It
+//     is not: that loop only cp's, and cp merges rather than removes. An
+//     archive that no item references any longer stays in site/ until it is
+//     deleted by hand. Nothing publishes it, so this is disk rather than
+//     exposure — but it is not cleaned, and saying it was is how a reader
+//     stops looking.
+//
+// Neither this prune nor the publish filter can remove an object already in
+// R2. Nothing deletes remote objects; that remains open.
+//
 // Only slugs are pruned, and only in the three directories build.mjs owns.
-// Nothing else under site/ is touched: vendor/, three/ and lenis/ are written
-// by the VENDOR map, and site/archive/<name> is keyed by archive rather than
-// by slug and is cleaned by the archive loop above.
+// vendor/, three/ and lenis/ are written by the VENDOR map and left alone.
 {
   const keep = new Set(items.map((i) => i.slug))
   let pruned = 0
@@ -363,7 +390,10 @@ for (const it of items) {
   }
 }
 
-console.log(`built ${items.length} items → site/`)
+// Name the tree that was actually written. Hardcoding "site/" here reported a
+// fixtures build as though it had replaced the vault, which is precisely the
+// confusion the two separate trees exist to remove.
+console.log(`built ${items.length} items → ${path.relative(ROOT, SITE)}/`)
 console.log(`  data: facets.json (${(JSON.stringify(facets).length / 1024).toFixed(1)}KB) + ${items.length} records`)
 
 // ─── Showcase media for the PUBLIC landing page ────────────────────────────
@@ -378,8 +408,12 @@ console.log(`  data: facets.json (${(JSON.stringify(facets).length / 1024).toFix
 //
 // So the handful of previews the landing page is allowed to show have to be
 // committed. They are copied here, from out/, for any item that opts in with
-// `"showcase": true` in its meta.json — which today means the three MIT
-// fixtures written for that page, and nothing licensed. web/src/lib/showcase.ts
+// `"showcase": true` in its meta.json — which today means three of the eleven
+// fixtures, and nothing licensed. All eleven are MIT under the root LICENSE,
+// whose scope section is deliberately narrow: it covers fixtures/ and nothing
+// in items/ or archives/, because that is bought source and relicensing it
+// would be the redistribution this whole file is arranged to prevent.
+// web/src/lib/showcase.ts
 // reads the same meta field for titles and checks this directory for media, so
 // a missing capture degrades to a titled placeholder instead of a 404.
 //

@@ -165,8 +165,10 @@ Eight seconds with Cmd-Shift-5 beats forty minutes of arguing with a headless br
 
 ## What's tracked
 
-**Tracked:** the tool, and `fixtures/` — eight items written from scratch for this repo, which
-double as the test suite.
+**Tracked:** the tool, and `fixtures/` — eleven items written from scratch for this repo, which
+double as the test suite. They are **MIT** under [LICENSE](./LICENSE); three of them are the
+showcase tiles on the public landing page, which is what that grant exists to make true. The
+scope section there is narrow on purpose and covers nothing below.
 
 **Not tracked:** `items/`, `out/`, `site/`.
 
@@ -175,8 +177,9 @@ Two reasons, both deliberate:
 1. **Licensing.** The collection is third-party source — paid templates, ripped components,
    code licensed for personal reference but not redistribution. Committing it would republish
    someone else's work under this repo's name.
-2. **Size.** Eight fixtures alone produce 46 MB of capture output. A real collection of a few
-   hundred items, with textures, `.glb` models and video, runs to gigabytes.
+2. **Size.** Eight fixtures alone produced 46 MB of capture output when that was measured. A
+   real collection of a few hundred items, with textures, `.glb` models and video, runs to
+   gigabytes — `archives/` reached 274 MB across four templates.
 
 The tool is the shareable part. The morgue is yours alone.
 

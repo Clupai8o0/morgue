@@ -2,8 +2,11 @@ import { chromium } from 'playwright'
 import { createServer } from 'node:http'
 import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
-const SITE=process.cwd()+'/site'
 const SRC=process.env.MORGUE_SRC||'items'
+// Derived exactly as in bin/build.mjs, from the same variable, so `pnpm test`
+// checks the tree it just built rather than the real vault. See the comment
+// there for why the two trees are separate.
+const SITE=process.cwd()+(SRC==='items'?'/site':'/site-fixtures')
 const MIME={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.mp4':'video/mp4','.webp':'image/webp','.avif':'image/avif','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.ico':'image/x-icon','.woff':'font/woff','.woff2':'font/woff2','.txt':'text/plain'}
 
 // A Next static export emits about.html, but <Link href="/about"> navigates to the
@@ -32,9 +35,11 @@ const MAX_LINKS=6
 // also means an archive-backed item, which has no items/<slug>/index.html to navigate to,
 // is checked at the route it actually lives at.
 let records
+let built=true
 try{
   records=JSON.parse(await readFile(path.join(SITE,'items.json'),'utf8')).map(r=>({slug:r.slug,href:'/'+String(r.href).replace(/^\//,'')}))
 }catch{
+  built=false
   // No build yet. Fall back to the old directory scan so `check` says something useful
   // rather than a stack trace. Directories only: items/ also holds .gitkeep.
   console.warn('  ! site/items.json missing — run `pnpm build` first; falling back to a directory scan')
@@ -99,5 +104,25 @@ for (const {slug,href} of records) {
   console.log(`  ${slug.padEnd(20)} ${links.length?`[${links.length} link${links.length>1?'s':''}] `:''}${u.length?'FAIL  '+u.slice(0,3).join(' | '):'ok'}`)
   await pg.close()
 }
-console.log(bad?`\n${bad} item page(s) broken in the built site`:'\nall item pages run')
+// The exit code is the whole point of the gate. Without it this script counted every
+// broken page, printed the number, and exited 0 — so `pnpm check` could not fail, and
+// `pnpm test` (an && chain ending in fixtures:check) stayed green with every item page
+// broken. CLAUDE.md calls this check not optional; for its entire life it was unable
+// to say no.
+//
+// A missing build also fails, because "run pnpm build first" is an instruction that
+// clears the red. An EMPTY build does not: a collection with no items has nothing to
+// prove and no action would ever turn that red green, and a permanent red is how a
+// gate gets ignored — which is the same failure as one that cannot fail, arrived at
+// socially instead of in code. A fresh clone has an empty collection by design
+// (docs/LOCAL-MODE.md), so this is the ordinary case, not a broken one.
+if(!built){
+  console.log('\nno build to check — run `pnpm build` first')
+  process.exitCode=1
+}else if(!records.length){
+  console.log('\nno items in the index — nothing to check')
+}else{
+  console.log(bad?`\n${bad} item page(s) broken in the built site`:'\nall item pages run')
+  if(bad) process.exitCode=1
+}
 await br.close(); srv.close()

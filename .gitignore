@@ -21,6 +21,11 @@ archives/*
 # Generated media and built output — reproducible from source via `pnpm capture`.
 out/
 site/
+# `pnpm test` builds fixtures/ into its own tree rather than site/. The two used
+# to share one directory, which meant a test run replaced the vault's index with
+# 11 fixture records and — once build.mjs learned to prune — deleted every real
+# item out of site/ as a side effect of running the tests.
+site-fixtures/
 
 # Fixture build artefacts. The SOURCE of every fixture is committed; the built
 # output is not, so a stale export never ends up in git.

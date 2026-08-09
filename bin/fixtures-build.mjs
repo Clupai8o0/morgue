@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Fixtures are committed as SOURCE; their build output is gitignored. This regenerates it.
 //
-// Two of the eight need a build step, and they are in the corpus precisely because they are
+// Two of the eleven need a build step, and they are in the corpus precisely because they are
 // the two that broke the pipeline: React/motion needs bundling, and the Next.js static export
 // hardcodes absolute /_next/ URLs that 404 unless assetPrefix matches where it is served.
 

@@ -10,7 +10,7 @@
 import { chromium } from 'playwright'
 import sharp from 'sharp'
 import { createServer } from 'node:http'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { readFile, writeFile, mkdir, rm, readdir, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -283,6 +283,34 @@ const run = (cmd, args) =>
     p.on('close', (c) => (c === 0 ? res() : rej(new Error(err.slice(-1500)))))
   })
 
+/**
+ * Fail on the encoder before spending minutes rendering frames for it.
+ *
+ * Fedora ships `ffmpeg-free`, which is built without libx264 — so `ffmpeg
+ * -version` succeeds, capture runs to completion, and the whole thing dies at
+ * the encode step with "Unknown encoder 'libx264'" buried under twenty lines of
+ * library versions. The encoder is NOT swapped automatically: which one to use
+ * was a measured decision (FINDINGS.md § "Encoder selection") and quietly
+ * producing a different file than the one that was measured is worse than
+ * stopping.
+ */
+function assertEncoder() {
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-encoders'], { encoding: 'utf8' })
+  if (r.error) {
+    throw new Error('ffmpeg is not installed, or is not on PATH.')
+  }
+  if (!/\slibx264\s/.test(r.stdout ?? '')) {
+    throw new Error(
+      'This ffmpeg has no libx264 encoder, so nothing can be encoded.\n' +
+        '  Fedora\'s default `ffmpeg-free` is built without it. Install the full build:\n' +
+        '    sudo dnf install ffmpeg --allowerasing        (RPM Fusion)\n' +
+        '  macOS: brew install ffmpeg.\n' +
+        '  The encoder is not swapped automatically on purpose — which one to use\n' +
+        '  was a measured decision, see FINDINGS.md § "Encoder selection".',
+    )
+  }
+}
+
 async function encode(slug, cfg, outDir, frameDir, { boomerang = false } = {}) {
   const fps = cfg.fps ?? 30
   const W = 600
@@ -361,8 +389,21 @@ async function contactSheet(frameDir, outDir, frames) {
 // regenerates them in seconds. --keep-frames when you want to re-encode without recapturing.
 const KEEP_FRAMES = process.argv.includes('--keep-frames')
 const slugs = process.argv.slice(2).filter((a) => !a.startsWith('--'))
+
+// Before any frames are rendered. Discovering the encoder is missing after a
+// four-minute capture is a bad way to spend four minutes.
+assertEncoder()
+
+// Directories only. A bare readdir also returns `items/.gitkeep`, which every
+// checkout has, so `pnpm capture` with no arguments has crashed on a clean tree
+// since the first commit — build.mjs, check.mjs and optimise.mjs all filter and
+// this was the one that did not.
+const all = (await readdir(path.join(ROOT, SRC), { withFileTypes: true }))
+  .filter((d) => d.isDirectory())
+  .map((d) => d.name)
+
 const failures = []
-for (const slug of slugs.length ? slugs : await readdir(path.join(ROOT, SRC))) {
+for (const slug of slugs.length ? slugs : all) {
   process.stdout.write(`\n▸ ${slug}\n`)
   const r = await capture(slug)
   process.stdout.write(`  frames: ${r.frames} in ${r.ms}ms (${Math.round(r.ms / r.frames)}ms/frame)\n`)

@@ -11,7 +11,9 @@
 //
 //   pnpm publish:r2              upload media + data to the private bucket
 //   pnpm publish:r2 --dry-run    list what would be uploaded, touch nothing
-//   pnpm publish:r2 --public     target the public bucket (showcase items)
+//   pnpm publish:r2 --public     target the public bucket. Media only, and only
+//                                for showcase items under an own/mit licence —
+//                                see the licence gate below, which fails closed.
 
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -122,8 +124,74 @@ async function upload(localPath, key) {
   return { key, size, skipped: false }
 }
 
+// ─── What may be uploaded: the index decides, in both modes ────────────────
+//
+// This script walks out/ and site/data. It does NOT walk site/, which matters
+// because build.mjs's prune only tidies site/ — so pruning never had any effect
+// on what this script uploads, despite a comment there claiming it did. out/ is
+// never pruned (preview.mp4 is the archival record under rule 11, and out/ is
+// shared with `pnpm test`'s fixture captures), so out/ accumulates every slug
+// ever captured, including retired ones. Uploading straight from it is how the
+// media of a RETIRED PAID TEMPLATE stays staged for a bucket forever.
+//
+// The index is therefore the authority in both modes: a slug absent from
+// site/items.json is not part of the collection and does not go up.
+//
+// --public then narrows it further. That flag used to switch the bucket and
+// change nothing else, which put it one keystroke from redistributing bought
+// source. A public bucket has no signed URLs and nothing in front of it, so
+// anything landing there is world-readable the moment it arrives and cannot be
+// recalled from whatever already fetched it. The public allowlist mirrors the
+// tripwire in build.mjs: showcase-flagged AND own/mit-licensed, media only.
+//
+// Both paths fail closed — no index, no upload — for the same reason rule 9
+// makes an unconfigured deploy 503 rather than serve the vault.
+//
+// Neither filter can remove what is already in the bucket. Nothing in this
+// pipeline deletes remote objects; that is still open and is not fixed here.
+let index
+try {
+  index = JSON.parse(await readFile(path.join(ROOT, 'site', 'items.json'), 'utf8'))
+} catch {
+  console.error(
+    'Refusing to publish: site/items.json is missing, so there is no index to\n' +
+      'check what belongs in the collection. Run `pnpm build` first.',
+  )
+  process.exit(1)
+}
+
+const current = new Set(index.map((it) => it.slug))
+const allowed = PUBLIC
+  ? new Set(
+      index
+        .filter((it) => it.showcase === true && (it.license === 'own' || it.license === 'mit'))
+        .map((it) => it.slug),
+    )
+  : current
+
+if (PUBLIC) {
+  const refused = index.filter((it) => !allowed.has(it.slug))
+  console.log(`--public: ${allowed.size} of ${index.length} item(s) may be published publicly`)
+  // Name them. "Refusing 12 items" invites the assumption that the list is
+  // obvious; it is not, and a slug missing from the public bucket for a licence
+  // reason should be readable here rather than inferred from a 404 later.
+  for (const it of refused) {
+    console.log(`  refused  ${it.slug.padEnd(24)} license "${it.license}"${it.showcase === true ? '' : ', not showcase'}`)
+  }
+  if (allowed.size === 0) {
+    console.error('\nNothing is publishable to the public bucket. Nothing was uploaded.')
+    process.exit(1)
+  }
+  console.log()
+}
+
+/** out/ paths arrive as "<slug>/preview.mp4", so the first segment is the slug. */
+const slugOf = (rel) => rel.split(path.sep)[0]
+
 const jobs = []
 const excluded = []
+const withheld = []
+const stale = []
 
 // 1. Capture media: out/<slug>/* → media/<slug>/*
 for (const rel of await walk(path.join(ROOT, 'out'))) {
@@ -134,12 +202,31 @@ for (const rel of await walk(path.join(ROOT, 'out'))) {
     excluded.push(rel)
     continue
   }
+  if (!allowed.has(slugOf(rel))) {
+    // Two different reasons, worth separating in the report: a slug missing
+    // from the index is stale capture output for something no longer in the
+    // collection, which is the retired-paid-media case. A slug that is in the
+    // index but not in `allowed` was refused by the licence gate above.
+    ;(current.has(slugOf(rel)) ? withheld : stale).push(rel)
+    continue
+  }
   jobs.push([path.join(ROOT, 'out', rel), `media/${rel}`])
 }
 
 // 2. The data payload the app reads: site/data/* → data/*
-for (const rel of await walk(path.join(ROOT, 'site', 'data'))) {
-  jobs.push([path.join(ROOT, 'site', 'data', rel), `data/${rel}`])
+//
+// Skipped entirely under --public, and not merely filtered. facets.json is the
+// index of the WHOLE private collection — every paid title, effect and tag —
+// and items/<slug>.json carries the inlined source. Neither has any business
+// in a world-readable bucket, and the public landing page does not read them:
+// its showcase media is committed to web/public/showcase/ by build.mjs and
+// served by Vercel, which is why nothing here is needed to make that page work.
+if (PUBLIC) {
+  console.log('  (data payload withheld from the public bucket — facets.json indexes the private collection and items/*.json inline source)\n')
+} else {
+  for (const rel of await walk(path.join(ROOT, 'site', 'data'))) {
+    jobs.push([path.join(ROOT, 'site', 'data', rel), `data/${rel}`])
+  }
 }
 
 if (jobs.length === 0) {
@@ -153,6 +240,17 @@ console.log(`${DRY ? '[dry run] ' : ''}${jobs.length} files → ${BUCKET}`)
 // they are looking for a file that was never uploaded.
 if (excluded.length) {
   console.log(`  (excluding ${excluded.length} poster.png intermediates — .webp/.avif are what get served)`)
+}
+if (withheld.length) {
+  console.log(`  (withholding ${withheld.length} media file(s) belonging to items the licence gate refused)`)
+}
+if (stale.length) {
+  const slugs = [...new Set(stale.map(slugOf))]
+  console.log(
+    `  (skipping ${stale.length} file(s) under out/ for ${slugs.length} slug(s) not in the index: ${slugs.join(', ')})\n` +
+      '   These are retired or never-built items. out/ keeps them deliberately — it is the\n' +
+      '   archival record — but they are not part of the collection and do not go up.',
+  )
 }
 console.log()
 

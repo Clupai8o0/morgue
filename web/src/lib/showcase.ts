@@ -56,7 +56,7 @@ export interface ShowcaseItem {
   poster: string | null;
   /** Public path, or null when capture has not run yet. */
   video: string | null;
-  /** Source on GitHub. These are MIT/own-licensed, so the code can be shown. */
+  /** Source on GitHub. These are MIT under the root LICENSE, so the code can be shown. */
   href: string;
 }
 
