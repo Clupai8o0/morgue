@@ -70,6 +70,7 @@ export function ShareLink({
   scope,
   slug,
   maxWidth = "max-w-[1100px]",
+  children,
 }: {
   scope: "vault" | "item";
   slug?: string;
@@ -81,6 +82,23 @@ export function ShareLink({
    * in keeps it honest per page: the index is 1400 and a detail page is 1100.
    */
   maxWidth?: string;
+  /**
+   * Controls to sit beside the Share button, inside the same pinned row.
+   *
+   * THIS SLOT EXISTS BECAUSE THE CORNER CAN ONLY HAVE ONE OWNER, and that has
+   * now been learned twice. The build date used to sit at the right of the
+   * vault header and was overlapped by this button; it was moved. Then
+   * `account →` was added to the same header with `ml-auto` and landed in the
+   * identical spot — measured at a 61×10px collision, with the link rendered
+   * underneath the button and unclickable.
+   *
+   * A comment saying "do not put anything in this corner" did not prevent the
+   * second one, so the fix is structural: anything that belongs up here comes
+   * through this slot and gets laid out by the same flex row, where it cannot
+   * overlap. A page that wants a control in the corner can no longer position
+   * one itself, because it does not know where this button is.
+   */
+  children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [hours, setHours] = useState(24 * 7);
@@ -159,7 +177,13 @@ export function ShareLink({
     // is what stops an invisible bar across the top of the page swallowing
     // clicks on everything beneath it.
     <div className="pointer-events-none fixed inset-x-0 top-lg z-40 isolate">
-      <div className={`mx-auto w-full px-lg flex justify-end ${maxWidth}`}>
+      <div className={`mx-auto w-full px-lg gap-xs flex items-center justify-end ${maxWidth}`}>
+        {children ? (
+          // pointer-events restored per child, matching the button: the track
+          // above is deliberately transparent to clicks so it does not swallow
+          // the whole top of the page.
+          <div className="pointer-events-auto flex items-center">{children}</div>
+        ) : null}
         <div ref={rootRef} className="pointer-events-auto relative">
           <button
             onClick={() => (open ? reset() : setOpen(true))}

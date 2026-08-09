@@ -36,12 +36,30 @@ export default async function VaultPage() {
           there and share tokens need an AUTH_SECRET to sign with. The button
           would not be merely useless, it would be broken. */}
       {!shared && !local ? (
-        <ShareLink scope="vault" maxWidth="max-w-[1400px]" />
+        <ShareLink scope="vault" maxWidth="max-w-[1400px]">
+          {/* In the pinned row, NOT in the header below. /account had no link
+              from anywhere and was reachable only by typing the URL; adding one
+              at the header's right edge put it directly underneath this button
+              — a 61×10px overlap, the link unclickable — which is the same
+              collision the build date had before it was moved. The corner has
+              one owner and this is how you join it. Styled to match the Share
+              pill because both are pinned over scrolling content and need the
+              same backdrop to stay legible. */}
+          <Link
+            href="/account"
+            className="border-hairline-soft hover:border-hairline bg-canvas/70 text-ink-muted hover:text-ink rounded-pill px-sm text-micro border py-[7px] backdrop-blur-[6px] transition-[color,border-color,transform] duration-[var(--duration-fast)] ease-[var(--ease-spring)] hover:scale-[1.04] active:scale-[0.97]"
+          >
+            account
+          </Link>
+        </ShareLink>
       ) : null}
       <main className="mx-auto w-full max-w-[1400px] px-lg py-xxl">
-      {/* The build date used to sit at the right of this row, which is exactly
-          where the pinned Share button lands — they overlapped. Only one thing
-          can own that corner, and it is the control. */}
+      {/* NOTHING GOES AT THE RIGHT OF THIS ROW. The pinned Share cluster lands
+          exactly there, and it has already collided with two things put here:
+          the build date, and then `account →`. Both looked fine in the source
+          and were overlapped in the browser, because the cluster is `fixed` and
+          this row cannot see it. Anything that belongs in that corner is passed
+          to <ShareLink> as a child instead. */}
       <header className="mb-xl gap-sm flex flex-wrap items-baseline">
         <h1 className="text-caption text-ink-muted uppercase tracking-[0.14em]">
           Vault
@@ -51,20 +69,12 @@ export default async function VaultPage() {
             · built {new Date(index.builtAt).toLocaleDateString()}
           </span>
         ) : null}
-        {/* /account had no link from anywhere and was reachable only by typing
-            the URL. Hidden from a shared viewer, who is refused it by proxy.ts
-            anyway — offering a link that 404s is worse than offering none. The
-            same argument retires it in local mode, where there is no account. */}
-        {!shared && !local ? (
-          <Link
-            href="/account"
-            className="text-micro text-ink-muted hover:text-ink ml-auto transition-colors"
-          >
-            account →
-          </Link>
-        ) : null}
+        {/* Left-aligned, deliberately: in local mode there is no Share cluster
+            to join, so this is the one label that can sit inline — and it must
+            not use `ml-auto`, or it reintroduces the collision the moment
+            somebody makes the cluster render in local mode too. */}
         {local ? (
-          <span className="text-micro text-ink-muted ml-auto">local</span>
+          <span className="text-micro text-ink-muted">· local</span>
         ) : null}
       </header>
 

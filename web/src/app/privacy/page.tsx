@@ -20,8 +20,7 @@ export default function PrivacyPage() {
     <LegalPage title="Privacy" updated="9 August 2026">
       <Note>
         This describes what the software does today. It has not been reviewed
-        by a lawyer, and it needs the operator&apos;s legal name and contact
-        address filled in before launch.
+        by a lawyer.
       </Note>
 
       <H2>What is stored</H2>
@@ -160,8 +159,22 @@ export default function PrivacyPage() {
 
       <H2>Contact</H2>
       <P>
+        Clupai — Samridh Limbu
+        <br />
+        70 Elgar Road, Burwood, Victoria 3125, Australia
+        <br />
+        <a
+          href="mailto:privacy@clupai.com"
+          className="hover:text-ink underline underline-offset-4"
+        >
+          privacy@clupai.com
+        </a>
+      </P>
+      <P>
         <span className="text-ink-muted">
-          [operator legal name] · [postal address] · privacy@[domain]
+          Australian privacy law applies to this service. If you are not
+          satisfied with a response, you can complain to the Office of the
+          Australian Information Commissioner at oaic.gov.au.
         </span>
       </P>
     </LegalPage>

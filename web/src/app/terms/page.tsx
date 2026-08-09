@@ -10,10 +10,8 @@ export default function TermsPage() {
   return (
     <LegalPage title="Terms" updated="9 August 2026">
       <Note>
-        This has not been reviewed by a lawyer. Before launch it needs the
-        operator&apos;s legal name, a governing jurisdiction, and a real
-        address for the copyright agent below — a takedown contact that does
-        not reach anybody is worse than no contact at all.
+        This has not been reviewed by a lawyer. The operator, the jurisdiction
+        and the takedown address below are real and monitored.
       </Note>
 
       <H2>What this is</H2>
@@ -152,14 +150,39 @@ export default function TermsPage() {
 
       <H2>Contact</H2>
       <P>
-        <span className="text-ink-muted">
-          [operator legal name] · [postal address] · Copyright agent:
-          copyright@[domain] · General: hello@[domain]
-        </span>
+        Clupai — Samridh Limbu
+        <br />
+        70 Elgar Road, Burwood, Victoria 3125, Australia
+        <br />
+        <a
+          href="mailto:privacy@clupai.com"
+          className="hover:text-ink underline underline-offset-4"
+        >
+          privacy@clupai.com
+        </a>
       </P>
       <P>
         <span className="text-ink-muted">
-          Governing law: [jurisdiction].
+          One address for everything — copyright notices, privacy requests and
+          general contact. A single monitored inbox beats three plausible
+          aliases where two of them bounce, which is exactly what a takedown
+          notice must never do.
+        </span>
+      </P>
+
+      <H2>Governing law</H2>
+      <P>
+        These terms are governed by the laws of the State of Victoria,
+        Australia, and the courts of that State have non-exclusive
+        jurisdiction.
+      </P>
+      <P>
+        <span className="text-ink-muted">
+          Nothing here limits rights you have under the Australian Consumer
+          Law, which cannot be excluded — the exclusions above apply only so
+          far as the law allows. &ldquo;Non-exclusive&rdquo; is deliberate: it
+          keeps Victoria the default without stripping you of a court you would
+          otherwise be entitled to bring a claim in.
         </span>
       </P>
     </LegalPage>
