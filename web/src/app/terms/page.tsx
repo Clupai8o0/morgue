@@ -59,6 +59,24 @@ export default function TermsPage() {
         <LI>Sharing your account. Invitations are for one person.</LI>
       </UL>
 
+      <H2>What an account costs, and what it holds</H2>
+      <P>
+        Accounts are free. There is nothing to buy and no paid tier, which is
+        why every account is capped: storage is billed to the operator by the
+        byte, so an uncapped free account is an open invoice.
+      </P>
+      <P>
+        Your current limits are shown at{" "}
+        <span className="text-ink">/upgrade</span>, along with a button that
+        asks for more. A person reads those requests and raises the cap by hand,
+        so it is neither instant nor guaranteed. Nothing is charged either way.
+      </P>
+      <P>
+        Being on the waitlist and being within your cap are separate things. The
+        waitlist decides whether you get an account; the cap decides how much it
+        may hold. Passing the first does not exempt you from the second.
+      </P>
+
       <H2>Copyright complaints</H2>
       <P>
         If something here infringes your copyright, write to the address below

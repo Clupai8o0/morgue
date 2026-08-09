@@ -199,8 +199,22 @@ console.log(`\nverifying share links against ${BASE} (production build, auth con
     const account = await get('/account', cookie)
     refused(account) ? ok('is REFUSED /account', String(account.status)) : bad('is REFUSED /account', String(account.status))
 
-    const accountApi = await get('/api/account/me', cookie)
-    refused(accountApi) ? ok('is REFUSED /api/account/me', String(accountApi.status)) : bad('is REFUSED /api/account/me', String(accountApi.status))
+    // Every owner-only path, one assertion each, and deliberately not a loop
+    // over a list imported from proxy.ts — a test that derives its expectations
+    // from the thing under test cannot notice that thing being wrong. Adding a
+    // line to PROTECTED means adding a line here.
+    for (const path of [
+      '/api/account/me',
+      '/api/account/delete',
+      '/api/account/email',
+      '/api/account/export',
+      '/api/account/sessions',
+      '/api/account/upgrade',
+      '/upgrade',
+    ]) {
+      const res = await get(path, cookie)
+      refused(res) ? ok(`is REFUSED ${path}`, String(res.status)) : bad(`is REFUSED ${path}`, String(res.status))
+    }
 
     const mint = await fetch(`${BASE}/api/share`, {
       method: 'POST', redirect: 'manual',

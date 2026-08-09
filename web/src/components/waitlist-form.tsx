@@ -40,7 +40,9 @@ export function WaitlistForm() {
       <div className="border-hairline bg-surface-1 rounded-xl p-lg border">
         <p className="text-display-md font-display">You&apos;re on the list.</p>
         <p className="text-body text-ink-muted mt-xs">
-          No account has been created and nothing is stored beyond your email.
+          No account has been created. We keep your email, whatever note you
+          left, and a one-way hash of your IP address used only to rate-limit
+          this form.
         </p>
       </div>
     );

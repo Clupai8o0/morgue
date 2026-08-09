@@ -106,8 +106,37 @@ function sh(cmd, args) {
  * a cluster made by `initdb -U postgres` has no such role.
  */
 export async function startPostgres({ port = 55432 } = {}) {
+  /**
+   * An escape hatch for machines with no Postgres installed — point it at one
+   * you already have (a container, a scratch cloud database) and this skips
+   * initdb entirely:
+   *
+   *   MORGUE_TEST_DATABASE_URL=postgres://postgres:pw@127.0.0.1:55432/morgue_verify
+   *
+   * It must be a THROWAWAY database. Migrations are applied straight onto it
+   * and the suite seeds and deletes rows freely; pointed at anything real it
+   * would be destructive. Nothing is dropped on the way out because nothing
+   * here created it — cleaning up is the caller's problem, which is the honest
+   * division when the caller supplied the server.
+   */
+  const external = process.env.MORGUE_TEST_DATABASE_URL
+  if (external) {
+    const sql = new pg.Client({ connectionString: external })
+    await sql.connect()
+    // Emptied first, or a second run collides with the first run's tables. This
+    // is why the variable's contract is "a database this suite may take over".
+    await sql.query('drop schema public cascade')
+    await sql.query('create schema public')
+    const applied = await applyMigrations(sql)
+    return { url: external, sql, applied, stop: () => {} }
+  }
+
   if (spawnSync('initdb', ['--version']).status !== 0) {
-    throw new Error('initdb not found — install Postgres (brew install postgresql@16).')
+    throw new Error(
+      'initdb not found — install Postgres (brew install postgresql@16, or\n' +
+        'dnf install postgresql-server), or set MORGUE_TEST_DATABASE_URL to a\n' +
+        'throwaway database this suite may take over.',
+    )
   }
 
   const dir = mkdtempSync(path.join(tmpdir(), 'morgue-verify-pg-'))
@@ -138,21 +167,33 @@ export async function startPostgres({ port = 55432 } = {}) {
     const sql = new pg.Client({ connectionString: url })
     await sql.connect()
 
-    const migrations = path.join(ROOT, 'web', 'drizzle')
-    const files = readdirSync(migrations).filter((f) => f.endsWith('.sql')).sort()
-    for (const f of files) {
-      for (const stmt of readFileSync(path.join(migrations, f), 'utf8').split(
-        '--> statement-breakpoint',
-      )) {
-        if (stmt.trim()) await sql.query(stmt.trim())
-      }
-    }
-
-    return { url, sql, applied: files.length, stop }
+    const applied = await applyMigrations(sql)
+    return { url, sql, applied, stop }
   } catch (err) {
     stop()
     throw err
   }
+}
+
+/**
+ * Applies every drizzle migration literally, in filename order.
+ *
+ * Literally, and not through drizzle-kit, is the point: this runs the SQL that
+ * will run against production. A schema.ts change with no generated migration
+ * file therefore fails here — which is the intended way to find out, rather
+ * than on deploy.
+ */
+async function applyMigrations(sql) {
+  const migrations = path.join(ROOT, 'web', 'drizzle')
+  const files = readdirSync(migrations).filter((f) => f.endsWith('.sql')).sort()
+  for (const f of files) {
+    for (const stmt of readFileSync(path.join(migrations, f), 'utf8').split(
+      '--> statement-breakpoint',
+    )) {
+      if (stmt.trim()) await sql.query(stmt.trim())
+    }
+  }
+  return files.length
 }
 
 /**

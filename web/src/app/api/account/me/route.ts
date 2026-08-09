@@ -8,7 +8,12 @@ import {
   passwordProblem,
   verifyPassword,
 } from "@/lib/password";
-import { bumpSessionVersion, findUserById, unlinkProvider } from "@/lib/users";
+import {
+  bumpSessionVersion,
+  findUserById,
+  setDisplayName,
+  unlinkProvider,
+} from "@/lib/users";
 
 /**
  * The signed-in user's own account. Never anybody else's.
@@ -39,6 +44,7 @@ export async function GET() {
     name: user.name,
     image: user.image,
     role: user.role,
+    plan: user.plan,
     emailVerified: user.emailVerified !== null,
     providers: methods.providers,
     hasPassword: methods.hasPassword,
@@ -74,6 +80,31 @@ export async function DELETE(req: Request) {
       { status: 409 },
     );
   }
+  return Response.json({ ok: true });
+}
+
+const Profile = z.object({ name: z.string().trim().min(1).max(100).nullable() });
+
+/**
+ * The display name, and nothing else.
+ *
+ * No session bump: a display name is not an authentication factor and nothing
+ * resolves an account by it. Contrast PATCH below, which changes a credential
+ * and therefore ends every session.
+ */
+export async function PUT(req: Request) {
+  const user = await me();
+  if (!user) return Response.json({ error: "Not authorised" }, { status: 401 });
+
+  const parsed = await req
+    .json()
+    .then((raw) => Profile.safeParse(raw))
+    .catch(() => null);
+  if (!parsed?.success) {
+    return Response.json({ error: "Enter a name, or clear it." }, { status: 400 });
+  }
+
+  await setDisplayName(user.id, parsed.data.name);
   return Response.json({ ok: true });
 }
 

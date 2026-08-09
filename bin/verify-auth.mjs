@@ -121,7 +121,21 @@ const PGDATA = path.join(PGDIR, 'data')
 // user, and a cluster made by initdb -U postgres has no such role — the
 // failure is `role "<you>" does not exist` at connect, from three places at
 // once (this script, the Next server, and psql).
-const DB_URL = `postgres://postgres@127.0.0.1:${PGPORT}/morgue_verify`
+/**
+ * An escape hatch for machines with no Postgres installed — point this at one
+ * you already have (a container, a scratch cloud database) and the initdb step
+ * is skipped:
+ *
+ *   MORGUE_TEST_DATABASE_URL=postgres://postgres:pw@127.0.0.1:55432/morgue_verify \
+ *     pnpm verify:auth
+ *
+ * It must be a THROWAWAY database. Migrations are applied straight onto it and
+ * this suite seeds and deletes rows freely; pointed at anything real it is
+ * destructive. Nothing is torn down on the way out, because nothing here built
+ * it. bin/lib/test-stack.mjs honours the same variable.
+ */
+const EXTERNAL_DB = process.env.MORGUE_TEST_DATABASE_URL
+const DB_URL = EXTERNAL_DB ?? `postgres://postgres@127.0.0.1:${PGPORT}/morgue_verify`
 
 function sh(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, { encoding: 'utf8', ...opts })
@@ -133,8 +147,13 @@ function sh(cmd, args, opts = {}) {
 
 let pgUp = false
 function startPostgres() {
+  if (EXTERNAL_DB) return
   if (spawnSync('initdb', ['--version']).status !== 0) {
-    throw new Error('initdb not found — install Postgres (brew install postgresql@16).')
+    throw new Error(
+      'initdb not found — install Postgres (brew install postgresql@16, or\n' +
+        'dnf install postgresql-server), or set MORGUE_TEST_DATABASE_URL to a\n' +
+        'throwaway database this suite may take over.',
+    )
   }
   // --auth=trust is safe here and only here: the cluster listens on loopback,
   // on a nonstandard port, for the lifetime of this script, and is deleted
@@ -161,6 +180,16 @@ function stopPostgres() {
 
 /** Applies every drizzle migration in order, the way drizzle-kit migrate would. */
 async function migrate(sql) {
+  // A cluster made by initdb is empty by definition; a database somebody handed
+  // us is not, and on the second run it still holds the first run's tables. So
+  // the external path starts by emptying it — which is what "a throwaway
+  // database this suite may take over" has to mean if re-running is to work at
+  // all. Never reached without MORGUE_TEST_DATABASE_URL explicitly set.
+  if (EXTERNAL_DB) {
+    await sql.query('drop schema public cascade')
+    await sql.query('create schema public')
+  }
+
   const dir = path.join(ROOT, 'web', 'drizzle')
   const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
   for (const f of files) {
@@ -745,6 +774,185 @@ section('10 · account API')
 
   const page = await get('/account', s.session)
   check('the account page opens for a signed-in user', page.status < 400, String(page.status))
+}
+
+// ── 11. Signing out everywhere ends this session too ────────────────────────
+section('11 · sign out everywhere')
+{
+  const anon = await fetch(`${BASE}/api/account/sessions`, { method: 'DELETE', redirect: 'manual' })
+  check(
+    'is closed without a session',
+    anon.status >= 400 || String(anon.headers.get('location')).includes('/signin'),
+    String(anon.status),
+  )
+
+  const email = 'everywhere@example.com'
+  await seed(email)
+  const s = await signInWithPassword(email, PW)
+  check('a fresh session opens the vault', await isSignedIn(s.session))
+
+  const res = await fetch(`${BASE}/api/account/sessions`, {
+    method: 'DELETE',
+    headers: { cookie: s.session ?? '' },
+  })
+  is('ending every session answers 200', res.status, 200)
+  is('and says so rather than leaving the user guessing', (await res.json()).signedOut, true)
+
+  check('the cookie that asked no longer opens the vault', !(await isSignedIn(s.session)))
+  const again = await signInWithPassword(email, PW)
+  check('but the password still works', await isSignedIn(again.session))
+}
+
+// ── 12. A name saves; an address moves only from the new mailbox ────────────
+section('12 · name and email')
+{
+  const mine = 'mover@example.com'
+  const taken = 'squatted@example.com'
+  const wanted = 'moved-to@example.com'
+  const uid = await seed(mine)
+  // A bystander, because a whole-table update and a correct one look identical
+  // when the table holds one row.
+  const bystanderId = await seed(taken, { name: 'do not touch' })
+  const s = await signInWithPassword(mine, PW)
+
+  let r = await json('/api/account/me', 'PUT', { name: 'New Name' }, s.session)
+  is('a display name saves', r.status, 200)
+  const me = await (await fetch(`${BASE}/api/account/me`, { headers: { cookie: s.session ?? '' } })).json()
+  is('and comes back on the next read', me.name, 'New Name')
+  check('without ending the session — a name is not a credential', await isSignedIn(s.session))
+
+  const free = await json('/api/account/email', 'POST', { email: wanted }, s.session)
+  const spoken = await json('/api/account/email', 'POST', { email: taken }, s.session)
+  is('asking about a free address answers 200', free.status, 200)
+  is('and an address that is spoken for answers identically', spoken.status, free.status)
+  is(
+    'with the same body — no oracle over the users table',
+    JSON.stringify(await spoken.json()),
+    JSON.stringify(await free.json()),
+  )
+
+  const { rows: unchanged } = await sql.query('select email from users where id = $1', [uid])
+  is('and asking has changed nothing yet', unchanged[0].email, mine)
+
+  const link = lastLinkFrom('/account/email/')
+  const token = String(link).slice(String(link).lastIndexOf('/') + 1)
+  r = await json('/api/account/email', 'PUT', { token }, s.session)
+  is('confirming from the new mailbox moves the address', r.status, 200)
+
+  const { rows: moved } = await sql.query(
+    'select email, email_verified from users where id = $1',
+    [uid],
+  )
+  is('the row now holds the new address', moved[0].email, wanted)
+  check(
+    'stamped verified, because holding the mailbox is what verification means',
+    moved[0].email_verified !== null,
+  )
+
+  const { rows: untouched } = await sql.query('select email, name from users where id = $1', [
+    bystanderId,
+  ])
+  is('and the bystander is untouched', untouched[0].email, taken)
+  is('name and all', untouched[0].name, 'do not touch')
+
+  const { rows: leftovers } = await sql.query(
+    `select count(*)::int as n from verification_tokens where identifier = any($1)`,
+    [[`reset:${mine}`, `verify:${mine}`]],
+  )
+  is('no token for the old address survives the move', leftovers[0].n, 0)
+  check('and the session that made the change is gone', !(await isSignedIn(s.session)))
+}
+
+// ── 13. Deleting an account takes what does not cascade with it ─────────────
+section('13 · delete my account')
+{
+  const email = 'leaving@example.com'
+  const uid = await seed(email)
+  await sql.query(
+    `insert into share_links (jti, token_hash, scope, created_by, expires_at)
+     values ($1,$2,'vault',$3, now() + interval '7 days')`,
+    ['jti-leaving', 'hash-leaving', uid],
+  )
+  await sql.query('insert into auth_attempts (email) values ($1)', [email])
+  await sql.query('insert into waitlist (email) values ($1)', [email])
+  const s = await signInWithPassword(email, PW)
+
+  let r = await json('/api/account/delete', 'POST', { confirm: 'someone.else@example.com' }, s.session)
+  is('the wrong address is refused', r.status, 403)
+  const { rows: still } = await sql.query('select id from users where id = $1', [uid])
+  is('and changes nothing', still.length, 1)
+
+  r = await json('/api/account/delete', 'POST', { confirm: email }, s.session)
+  is('the right one goes through', r.status, 200)
+
+  const gone = await sql.query('select id from users where id = $1', [uid])
+  is('the users row is gone', gone.rows.length, 0)
+
+  const links = await sql.query('select revoked_at from share_links where created_by = $1', [uid])
+  is('their share links are still listed', links.rows.length, 1)
+  check(
+    'and revoked, not deleted — an unknown jti is allowed through, so deleting would re-enable them',
+    links.rows[0].revoked_at !== null,
+  )
+
+  const attempts = await sql.query('select id from auth_attempts where email = $1', [email])
+  is('the address is not left behind in the lockout table', attempts.rows.length, 0)
+  const tokens = await sql.query(
+    `select identifier from verification_tokens where identifier like $1`,
+    [`%:${email}`],
+  )
+  is('nor is a live reset link for the freed address', tokens.rows.length, 0)
+  const wl = await sql.query('select id from waitlist where lower(email) = $1', [email])
+  is('and the waitlist row goes too', wl.rows.length, 0)
+  check('the session it was done from is dead', !(await isSignedIn(s.session)))
+}
+
+// ── 14. The last admin cannot strand the deployment ─────────────────────────
+section('14 · the last admin')
+{
+  // ADMIN from section 10 is still the only admin, so this asks the real
+  // question rather than a staged one.
+  const s = await signInWithPassword(ADMIN, PW)
+  const r = await json('/api/account/delete', 'POST', { confirm: ADMIN }, s.session)
+  is('deleting the only admin is refused', r.status, 409)
+  const { rows } = await sql.query('select id from users where lower(email) = $1', [ADMIN])
+  is('and the account survives', rows.length, 1)
+}
+
+// ── 15. Caps are published, usage is not invented ───────────────────────────
+section('15 · caps and upgrade requests')
+{
+  const email = 'asker@example.com'
+  const uid = await seed(email)
+  const s = await signInWithPassword(email, PW)
+
+  const anon = await get('/upgrade')
+  check(
+    'the upgrade page is closed without a session',
+    anon.status >= 400 || String(anon.headers.get('location')).includes('/signin'),
+    String(anon.status),
+  )
+  const page = await get('/upgrade', s.session)
+  check('and opens with one', page.status < 400, String(page.status))
+
+  let r = await json('/api/account/upgrade', 'POST', { note: 'need more room' }, s.session)
+  is('asking is recorded', r.status, 200)
+  is('and is not already pending the first time', (await r.json()).alreadyPending, false)
+
+  r = await json('/api/account/upgrade', 'POST', { note: 'again' }, s.session)
+  is('asking twice still answers 200', r.status, 200)
+  is('but says it is already pending', (await r.json()).alreadyPending, true)
+  const { rows } = await sql.query('select id from upgrade_requests where user_id = $1', [uid])
+  is('and the owner is asked exactly once', rows.length, 1)
+
+  // The export is the other half of "what do you hold about me".
+  const dump = await fetch(`${BASE}/api/account/export`, { headers: { cookie: s.session ?? '' } })
+  is('the export opens for its owner', dump.status, 200)
+  const data = await dump.json()
+  is('and is the caller, not a requested id', data.account.email, email)
+  is('the collection is explicitly absent, not silently missing', data.collection, null)
+  check('no password hash leaves the building', !JSON.stringify(data).includes('password_hash'))
+  check('and no share token hash either', !JSON.stringify(data).includes('tokenHash'))
 }
 
 console.log(`\n${pass}/${pass + fail} passed\n`)

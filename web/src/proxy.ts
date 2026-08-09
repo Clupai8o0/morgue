@@ -36,15 +36,29 @@ const PROTECTED = [
   "/vault",
   "/admin",
   "/account",
+  "/upgrade",
   "/api/media",
   "/api/vault",
   "/api/share",
   // NOT all of /api/account. `reset` and `verify` under it are deliberately
   // public — a locked-out person has no session to authenticate with, and
-  // gating the way back in on being signed in is a loop. Only `me` is
-  // protected, and it is listed rather than the prefix so that adding a new
-  // public sibling cannot silently open a private one, or vice versa.
+  // gating the way back in on being signed in is a loop.
+  //
+  // So the private siblings are listed one by one, and the cost of that is
+  // real: A NEW ROUTE UNDER /api/account IS PUBLIC UNTIL IT APPEARS HERE. That
+  // is the wrong default and it is kept only because the alternative — protect
+  // the prefix, list the exceptions — fails in the other direction, where
+  // forgetting an entry locks out the person who cannot sign in. Between a
+  // route that is accidentally open and a recovery path that is accidentally
+  // shut, neither is acceptable, so both lists are short and both are checked
+  // by bin/verify-share.mjs, which asserts every one of these is refused to a
+  // share cookie. Add to that suite whenever you add a line here.
   "/api/account/me",
+  "/api/account/delete",
+  "/api/account/email",
+  "/api/account/export",
+  "/api/account/sessions",
+  "/api/account/upgrade",
 ];
 
 function isProtected(pathname: string): boolean {
@@ -125,10 +139,18 @@ export default function proxy(req: NextRequest, ctx: NextFetchEvent) {
     isAdminPath(req.nextUrl.pathname) ||
     req.nextUrl.pathname.startsWith("/api/share") ||
     // Somebody holding a read-only link must never reach the controls that
-    // change how the vault's owner signs in.
+    // change how the vault's owner signs in — or, now, the ones that rename
+    // them, move their address, sign them out, export their identity or delete
+    // the account outright.
     req.nextUrl.pathname === "/account" ||
     req.nextUrl.pathname.startsWith("/account/") ||
-    req.nextUrl.pathname.startsWith("/api/account/me");
+    req.nextUrl.pathname === "/upgrade" ||
+    req.nextUrl.pathname.startsWith("/api/account/me") ||
+    req.nextUrl.pathname.startsWith("/api/account/delete") ||
+    req.nextUrl.pathname.startsWith("/api/account/email") ||
+    req.nextUrl.pathname.startsWith("/api/account/export") ||
+    req.nextUrl.pathname.startsWith("/api/account/sessions") ||
+    req.nextUrl.pathname.startsWith("/api/account/upgrade");
 
   if (!ownerOnly) {
     const shared = shareGate(req);

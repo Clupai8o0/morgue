@@ -16,6 +16,7 @@ interface Me {
   email: string;
   name: string | null;
   role: string;
+  plan: string;
   emailVerified: boolean;
   providers: string[];
   hasPassword: boolean;
@@ -60,12 +61,335 @@ export function AccountPanel({ available }: { available: string[] }) {
         <p className="text-micro text-ink-muted mt-xxs">
           {me.role === "admin" ? "admin · " : ""}
           {me.emailVerified ? "email confirmed" : "email not confirmed yet"}
+          {me.role === "admin" ? "" : ` · ${me.plan} plan`}
         </p>
+        {me.role === "admin" ? null : (
+          <a
+            href="/upgrade"
+            className="text-micro text-accent mt-sm inline-block underline underline-offset-4"
+          >
+            What you can hold →
+          </a>
+        )}
       </section>
 
+      <ProfileSection me={me} reload={load} />
       <SignInMethods me={me} available={available} reload={load} />
       <PasswordSection me={me} />
+      <SessionsSection />
+      <ExportSection />
+      <DeleteSection me={me} />
     </div>
+  );
+}
+
+/**
+ * Display name, and moving the account to a different address.
+ *
+ * The two sit together because they are the same idea — what this account is
+ * called and where it can be reached — but they behave completely differently.
+ * The name saves immediately; the address does nothing at all until a link sent
+ * to the NEW mailbox is opened. The copy has to make that difference obvious,
+ * because a form that appears to have done nothing is where people click twice.
+ */
+function ProfileSection({ me, reload }: { me: Me; reload: () => Promise<void> }) {
+  const [name, setName] = useState(me.name ?? "");
+  const [nameState, setNameState] = useState<"idle" | "saving" | "saved">("idle");
+  const [nameProblem, setNameProblem] = useState("");
+
+  const [email, setEmail] = useState("");
+  const [emailState, setEmailState] = useState<"idle" | "sending" | "sent">("idle");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailProblem, setEmailProblem] = useState("");
+
+  async function saveName(e: React.FormEvent) {
+    e.preventDefault();
+    if (nameState === "saving") return;
+    setNameState("saving");
+    setNameProblem("");
+    const res = await fetch("/api/account/me", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: name.trim() || null }),
+    });
+    if (!res.ok) {
+      setNameProblem((await res.json().catch(() => ({}))).error ?? "Could not save.");
+      setNameState("idle");
+      return;
+    }
+    await reload();
+    setNameState("saved");
+  }
+
+  async function requestEmail(e: React.FormEvent) {
+    e.preventDefault();
+    if (emailState === "sending") return;
+    setEmailState("sending");
+    setEmailProblem("");
+    const res = await fetch("/api/account/email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setEmailProblem(body.error ?? "Could not send that.");
+      setEmailState("idle");
+      return;
+    }
+    setEmailMessage(body.message ?? "Check that inbox.");
+    setEmailState("sent");
+  }
+
+  return (
+    <section className={card}>
+      <p className="text-caption text-ink-muted uppercase tracking-[0.14em]">
+        Name and address
+      </p>
+
+      <form onSubmit={saveName} className="gap-xs mt-md flex flex-col">
+        <input
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            setNameState("idle");
+          }}
+          maxLength={100}
+          placeholder="Display name"
+          aria-label="Display name"
+          className={input}
+        />
+        <button type="submit" disabled={nameState === "saving"} className={ghost}>
+          {nameState === "saving" ? "Saving…" : nameState === "saved" ? "Saved" : "Save name"}
+        </button>
+        {nameProblem ? (
+          <p role="alert" className="text-caption text-grad-coral">
+            {nameProblem}
+          </p>
+        ) : null}
+      </form>
+
+      <div className="border-hairline-soft mt-md pt-md border-t">
+        {emailState === "sent" ? (
+          <>
+            <p className="text-body-sm">{emailMessage}</p>
+            <p className="text-micro text-ink-muted mt-xs">
+              Your address is still <span className="break-all">{me.email}</span>{" "}
+              and stays that way until the link is opened. Nothing has changed
+              yet, so a typo here costs you an email and not your account.
+            </p>
+          </>
+        ) : (
+          <form onSubmit={requestEmail} className="gap-xs flex flex-col">
+            <p className="text-micro text-ink-muted">
+              Moving to a different address sends a link there to confirm it.
+            </p>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="off"
+              placeholder="new@domain.com"
+              aria-label="New email address"
+              className={input}
+            />
+            <button type="submit" disabled={emailState === "sending"} className={ghost}>
+              {emailState === "sending" ? "Sending…" : "Send confirmation"}
+            </button>
+            {emailProblem ? (
+              <p role="alert" className="text-caption text-grad-coral">
+                {emailProblem}
+              </p>
+            ) : null}
+          </form>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Ending every session, and ending this one.
+ *
+ * Both controls live here because "sign out" and "sign out everywhere" are
+ * neighbouring ideas and shipping only the second one reads as a missing
+ * feature. The ordinary one is a plain link to the Auth.js endpoint, which the
+ * proxy matcher excludes, so it needs nothing of ours.
+ */
+function SessionsSection() {
+  const [state, setState] = useState<"idle" | "working" | "done">("idle");
+  const [problem, setProblem] = useState("");
+
+  async function endAll() {
+    if (state === "working") return;
+    setState("working");
+    setProblem("");
+    const res = await fetch("/api/account/sessions", { method: "DELETE" });
+    if (!res.ok) {
+      setProblem((await res.json().catch(() => ({}))).error ?? "Could not do that.");
+      setState("idle");
+      return;
+    }
+    setState("done");
+  }
+
+  if (state === "done") {
+    return (
+      <section className={card}>
+        <p className="text-body-sm">Every session is ending.</p>
+        <p className="text-micro text-ink-muted mt-xs">
+          Including this one — there is no way to keep the session that asked,
+          which is what makes it worth doing after losing a device. It can take
+          up to a minute to take effect everywhere.
+        </p>
+        <a
+          href="/signin"
+          className="text-micro text-accent mt-sm inline-block underline underline-offset-4"
+        >
+          Sign in again →
+        </a>
+      </section>
+    );
+  }
+
+  return (
+    <section className={card}>
+      <p className="text-caption text-ink-muted uppercase tracking-[0.14em]">Sessions</p>
+      <p className="text-micro text-ink-muted mt-xs">
+        Signing out everywhere ends this session too, and takes up to a minute
+        to reach the others.
+      </p>
+      <div className="gap-xs mt-md flex flex-wrap">
+        {/* An endpoint, not a page, and it must be a real navigation: next/link
+            would client-route it and prefetch it, and a prefetched sign-out is
+            a sign-out nobody asked for. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+        <a href="/api/auth/signout" className={ghost}>
+          Sign out
+        </a>
+        <button onClick={endAll} disabled={state === "working"} className={ghost}>
+          {state === "working" ? "…" : "Sign out everywhere"}
+        </button>
+      </div>
+      {problem ? (
+        <p role="alert" className="text-caption text-grad-coral mt-sm">
+          {problem}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/** A plain download. No fetch, no state — the route sets the filename. */
+function ExportSection() {
+  return (
+    <section className={card}>
+      <p className="text-caption text-ink-muted uppercase tracking-[0.14em]">
+        Your data
+      </p>
+      <p className="text-micro text-ink-muted mt-xs">
+        Your account, how you sign in, your share links and anything you have
+        asked us for — as JSON. It does not include the collection: items belong
+        to the owner&rsquo;s vault and none of them is yours to take.
+      </p>
+      <a href="/api/account/export" download className={`${ghost} mt-md inline-block`}>
+        Download
+      </a>
+    </section>
+  );
+}
+
+/**
+ * Deleting the account.
+ *
+ * Last, and gated on typing the address. There is no danger colour in the token
+ * set — coral is the error colour and accent is for links — so this is
+ * distinguished by position, by the confirmation it demands, and by saying
+ * plainly what survives.
+ */
+function DeleteSection({ me }: { me: Me }) {
+  const [confirm, setConfirm] = useState("");
+  const [state, setState] = useState<"idle" | "deleting" | "gone">("idle");
+  const [problem, setProblem] = useState("");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (state === "deleting") return;
+    setState("deleting");
+    setProblem("");
+    const res = await fetch("/api/account/delete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ confirm }),
+    });
+    if (!res.ok) {
+      setProblem((await res.json().catch(() => ({}))).error ?? "Could not delete.");
+      setState("idle");
+      return;
+    }
+    setState("gone");
+  }
+
+  if (state === "gone") {
+    return (
+      <section className={card}>
+        <p className="text-body-sm">Your account is gone.</p>
+        <p className="text-micro text-ink-muted mt-xs">
+          Everything we held about you has been removed, and any share links you
+          issued have been revoked. If you were on the waitlist, that record went
+          too, so coming back means asking again.
+        </p>
+        {/* A full navigation on purpose: the account behind this session no
+            longer exists, so a client transition would carry dead state into
+            the next page. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+        <a
+          href="/"
+          className="text-micro text-accent mt-sm inline-block underline underline-offset-4"
+        >
+          ← morgue
+        </a>
+      </section>
+    );
+  }
+
+  return (
+    <section className={card}>
+      <p className="text-caption text-ink-muted uppercase tracking-[0.14em]">
+        Delete this account
+      </p>
+      <p className="text-micro text-ink-muted mt-xs">
+        Permanent, and immediate. Your share links stop working, and your
+        waitlist record goes with it. Type{" "}
+        <span className="text-ink break-all">{me.email}</span> to confirm.
+      </p>
+
+      <form onSubmit={submit} className="gap-xs mt-md flex flex-col">
+        <input
+          type="email"
+          required
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          autoComplete="off"
+          placeholder="Type your email address"
+          aria-label="Type your email address to confirm deletion"
+          className={input}
+        />
+        <button
+          type="submit"
+          disabled={state === "deleting" || confirm.length === 0}
+          className={ghost}
+        >
+          {state === "deleting" ? "Deleting…" : "Delete my account"}
+        </button>
+        {problem ? (
+          <p role="alert" className="text-caption text-grad-coral">
+            {problem}
+          </p>
+        ) : null}
+      </form>
+    </section>
   );
 }
 

@@ -33,13 +33,33 @@ import { normaliseEmail } from "@/lib/users";
  * untouched. It also makes it structurally impossible to redeem a verification
  * token as a reset token: the redemption names the purpose it wants and the
  * lookup includes it.
+ *
+ * ── The third purpose carries two values ────────────────────────────────────
+ *
+ * `emailchange:<userId>:<newEmail>`.
+ *
+ * A token minted against an address alone cannot say WHICH ACCOUNT asked for
+ * it, because `consumeAuthToken` returns everything after the prefix and that
+ * is all there is. For verification and reset that is fine — the address IS the
+ * account. For an email change it is not: the address in the token is one the
+ * account does not have yet, so without the user id there is nothing to move.
+ *
+ * Both halves are split on the FIRST colon. A uuid contains none and an email
+ * address cannot contain an unquoted one, so the split is unambiguous.
+ *
+ * Putting the id in the identifier also scopes `mintAuthToken`'s
+ * same-identifier delete per user: two people asking for the same address do
+ * not invalidate each other's link, and the second one to complete loses to the
+ * unique index instead.
  */
 
-export type TokenPurpose = "verify" | "reset";
+export type TokenPurpose = "verify" | "reset" | "emailchange";
 
 export const VERIFY_TTL_SECONDS = 24 * 60 * 60;
 /** Short on purpose: a reset link is a live key to the account. */
 export const RESET_TTL_SECONDS = 60 * 60;
+/** Same reasoning as reset — it moves where the account can be reached. */
+export const EMAIL_CHANGE_TTL_SECONDS = 60 * 60;
 
 const digest = (raw: string) => createHash("sha256").update(raw).digest("hex");
 
@@ -52,7 +72,7 @@ const digest = (raw: string) => createHash("sha256").update(raw).digest("hex");
 export async function mintAuthToken(
   purpose: TokenPurpose,
   email: string,
-  ttlSeconds = purpose === "reset" ? RESET_TTL_SECONDS : VERIFY_TTL_SECONDS,
+  ttlSeconds = purpose === "verify" ? VERIFY_TTL_SECONDS : RESET_TTL_SECONDS,
 ): Promise<string> {
   const identifier = `${purpose}:${normaliseEmail(email)}`;
   const raw = randomBytes(32).toString("base64url");

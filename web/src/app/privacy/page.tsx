@@ -124,8 +124,21 @@ export default function PrivacyPage() {
       <UL>
         <LI>Account data is kept for as long as the account exists.</LI>
         <LI>
-          Deleting your account deletes your vault, your files, and the OAuth
-          links attached to it.
+          You can delete your account yourself, at any time, from{" "}
+          <span className="text-ink">/account</span>. It is immediate and there
+          is no grace period.
+        </LI>
+        <LI>
+          Deleting removes your account row, the OAuth links attached to it,
+          your outstanding sign-in and reset links, your hashed rate-limit
+          records, and your waitlist entry if you had one. Losing the waitlist
+          entry means losing your approval — coming back means asking again.
+        </LI>
+        <LI>
+          Share links you issued are <strong>revoked</strong> rather than
+          deleted, and stop working. The record that they existed is kept,
+          because a share link is valid by its signature: forgetting one would
+          bring it back to life rather than kill it.
         </LI>
         <LI>Hashed rate-limit records are pruned after 24 hours.</LI>
         <LI>Backups may take up to 30 days to age out.</LI>
@@ -133,10 +146,16 @@ export default function PrivacyPage() {
 
       <H2>Your rights</H2>
       <P>
-        You can ask for a copy of your data, a correction, or deletion. Write
-        to the address below and expect a reply within 30 days. Depending on
-        where you live you may also have the right to complain to a data
-        protection regulator.
+        You can download everything we hold about you as a JSON file from{" "}
+        <span className="text-ink">/account</span>, without asking anyone. It
+        does not include the collection itself — the items in the vault belong
+        to the operator and none of them is yours to take.
+      </P>
+      <P>
+        You can also ask for a correction, or for deletion, by writing to the
+        address below; expect a reply within 30 days. Depending on where you
+        live you may also have the right to complain to a data protection
+        regulator.
       </P>
 
       <H2>Contact</H2>

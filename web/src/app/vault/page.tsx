@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { VaultGrid } from "@/components/vault/vault-grid";
 import { ShareLink } from "@/components/vault/share-link";
 import { SharedBanner } from "@/components/vault/shared-banner";
@@ -41,6 +42,17 @@ export default async function VaultPage() {
           <span className="text-micro text-ink-muted tabular-nums">
             · built {new Date(index.builtAt).toLocaleDateString()}
           </span>
+        ) : null}
+        {/* /account had no link from anywhere and was reachable only by typing
+            the URL. Hidden from a shared viewer, who is refused it by proxy.ts
+            anyway — offering a link that 404s is worse than offering none. */}
+        {!shared ? (
+          <Link
+            href="/account"
+            className="text-micro text-ink-muted hover:text-ink ml-auto transition-colors"
+          >
+            account →
+          </Link>
         ) : null}
       </header>
 

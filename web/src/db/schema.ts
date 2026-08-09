@@ -92,6 +92,21 @@ export const users = pgTable(
     status: text("status").notNull().default("active"),
 
     /**
+     * free | extended. What this account is allowed to hold — see lib/plan.ts,
+     * where the numbers live.
+     *
+     * A column rather than an env var, deliberately: rule 9 says not to keep a
+     * second answer to "may this person" beside the table, and a cap raised for
+     * one person is per-person state by definition. The CAPS themselves are
+     * constants in code, because they are policy rather than data and a
+     * deployment should not be able to quietly widen them.
+     *
+     * There is no billing. The only way this changes is an admin granting an
+     * upgrade request — see `upgradeRequests` below.
+     */
+    plan: text("plan").notNull().default("free"),
+
+    /**
      * Bumped on password change and on suspension. The JWT carries the value
      * it was minted with, and auth.ts compares the two — so revocation costs
      * one integer instead of a session table on the read path. It is not
@@ -213,6 +228,44 @@ export const authAttempts = pgTable(
   ],
 );
 
+/**
+ * Somebody asking for a bigger cap.
+ *
+ * There is no payment page — the billing decision was free-with-hard-caps, and
+ * the upgrade path is that a human reads this and raises the number
+ * (docs/DECISIONS.md § "Free with hard caps, and the waitlist stays").
+ *
+ * It is a TABLE rather than a fire-and-forget email for three reasons, all of
+ * which the waitlist already learned: an email cannot dedupe, so a signed-in
+ * user leaning on the button mails the owner forty times; there would be no
+ * review surface, so a request is only ever as durable as an inbox; and
+ * `notifyUpgradeRequest` swallows its failures by design, so with
+ * RESEND_API_KEY unset a green tick would be a lie. The row is committed first
+ * and the mail is best-effort after, which makes "nobody was emailed" a state
+ * the admin page can show rather than a silence.
+ *
+ * `userId` is a REAL foreign key with a cascade, unlike `shareLinks.createdBy`
+ * — this table has no reason to outlive its user, so the cascade is the whole
+ * of its cleanup and `deleteAccount()` needs no statement for it. Share links
+ * are the opposite case and the contrast is deliberate: see the delete order in
+ * lib/users.ts.
+ */
+export const upgradeRequests = pgTable(
+  "upgrade_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    note: text("note"),
+    // pending | granted | declined. Text, as everywhere else here.
+    status: text("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  },
+  (t) => [index("upgrade_requests_user_idx").on(t.userId, t.createdAt)],
+);
+
 /* ─── Everything that was already here ──────────────────────────────────── */
 
 export const waitlist = pgTable(
@@ -308,3 +361,4 @@ export type Account = typeof accounts.$inferSelect;
 export type Waitlist = typeof waitlist.$inferSelect;
 export type CliToken = typeof cliTokens.$inferSelect;
 export type ShareLink = typeof shareLinks.$inferSelect;
+export type UpgradeRequest = typeof upgradeRequests.$inferSelect;

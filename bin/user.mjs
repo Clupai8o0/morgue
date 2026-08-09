@@ -308,13 +308,65 @@ async function main() {
       if (!email) die('usage: pnpm user rm <email> --yes')
       if (!flag('yes')) {
         die(
-          `this deletes the account and every OAuth link it has.\n` +
+          `this deletes the account, every OAuth link it has, its waitlist row\n` +
+            `  and its lockout history, and revokes every share link it issued.\n` +
             `  Re-run with --yes if that is what you want.`,
         )
       }
-      const { rowCount } = await client.query(`delete from users where lower(email) = $1`, [email])
-      if (!rowCount) die(`no account for ${email}`)
-      console.log(`\n  ${GREEN('deleted')} ${email}\n`)
+      // Deliberately the same six steps, in the same order, as deleteAccount()
+      // in web/src/lib/users.ts. This used to be a bare `delete from users`,
+      // which cascades accounts and sessions and NOTHING ELSE — so the CLI was
+      // the path that quietly left a departing user's share links live, their
+      // address in the lockout table, and a redeemable `reset:` token pointing
+      // at an address anyone could then register.
+      //
+      // Two rows are not FKs and will not cascade however tempting it looks:
+      // share_links.created_by is bare text, and the waitlist row is keyed by
+      // address. upgrade_requests does cascade, so it is absent here on purpose.
+      const { rows: found } = await client.query(
+        `select id, role from users where lower(email) = $1`,
+        [email],
+      )
+      const victim = found[0]
+      if (!victim) die(`no account for ${email}`)
+
+      if (victim.role === 'admin') {
+        const { rows: others } = await client.query(
+          `select count(*)::int as n from users
+            where role = 'admin' and status = 'active' and id <> $1`,
+          [victim.id],
+        )
+        if (others[0].n === 0) {
+          die(
+            `${email} is the only active admin.\n` +
+              `  Deleting it leaves an /admin nobody can open — it 404s for non-admins.\n` +
+              `  Make someone else an admin first: pnpm user role <email> admin`,
+          )
+        }
+      }
+
+      // REVOKED, never deleted. A share token is valid because it is signed,
+      // and app/s/[token] lets an unknown jti through by design — so removing
+      // these rows would re-enable every link this user ever revoked.
+      const { rowCount: revoked } = await client.query(
+        `update share_links set revoked_at = now()
+          where created_by = $1 and revoked_at is null`,
+        [victim.id],
+      )
+      await client.query(`delete from verification_tokens where identifier = any($1)`, [
+        [`verify:${email}`, `reset:${email}`],
+      ])
+      await client.query(`delete from auth_attempts where email = $1`, [email])
+      await client.query(`delete from waitlist where lower(email) = $1`, [email])
+      // Last: the email is the key for everything above it.
+      await client.query(`delete from users where id = $1`, [victim.id])
+
+      console.log(`\n  ${GREEN('deleted')} ${email}`)
+      console.log(
+        DIM(
+          `  ${revoked} share link(s) revoked, tokens and lockout rows cleared, waitlist row removed.\n`,
+        ),
+      )
       break
     }
 

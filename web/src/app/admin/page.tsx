@@ -5,6 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import { db, dbConfigured } from "@/db";
 import { waitlist, type Waitlist } from "@/db/schema";
 import { ShareAdmin } from "@/components/vault/share-admin";
+import { UpgradeRequests } from "@/components/vault/upgrade-requests";
 
 export const metadata: Metadata = { title: "Admin" };
 export const dynamic = "force-dynamic";
@@ -159,6 +160,12 @@ function Shell({
           one — because sharing has its own independent configuration and
           "the waitlist is down" says nothing about whether links work. */}
       <ShareAdmin />
+
+      {/* Below sharing, above the waitlist: an outstanding link is live access
+          to the collection and outranks everything; an upgrade request is from
+          somebody who already has an account, which outranks a stranger's
+          signup. */}
+      <UpgradeRequests />
 
       <section>
         <header className="mb-sm gap-md flex items-baseline justify-between">
