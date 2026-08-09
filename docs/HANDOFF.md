@@ -98,6 +98,29 @@ the project is scoped Production-only, and a bare `vercel env pull` defaults to
 Development — it succeeds and writes a file with nothing useful in it, which
 reads as "the pull worked" right up until the app 503s.
 
+> [!WARNING]
+> **This no longer gets you working secrets, and it fails in the same shape.**
+> Attempted on the Fedora machine with Vercel CLI 58.9.0: the pull succeeds,
+> writes all 38 names, and every value that matters — `DATABASE_URL`,
+> `AUTH_SECRET`, `IP_HASH_SALT`, both R2 keys, both OAuth secrets,
+> `RESEND_API_KEY`, even `AUTH_URL` and `MORGUE_DATA_SOURCE` — comes back as the
+> literal string `[SENSITIVE]`. Every variable on the project is marked
+> sensitive, and Vercel treats sensitive values as write-only: they cannot be
+> read back by the CLI, by design.
+>
+> **Delete the file if this happens to you.** `DATABASE_URL=[SENSITIVE]` is
+> non-empty, so it reads as *configured* and produces a 500 from an unresolvable
+> host instead of an honest 503 — the trap STATUS.md already records as "a
+> placeholder DATABASE_URL is worse than an empty one", arrived at from a new
+> direction.
+>
+> So a second machine cannot get the environment from Vercel. Copy
+> `web/.env.local` across by hand under the rules in the warning below, or read
+> the values out of the Neon and Cloudflare dashboards. **In particular
+> `pnpm db:migrate` cannot be run from a machine that has not done this** — and
+> a deploy that lands before its migration takes the site down, because
+> `select()` on `users` names every column in `schema.ts`.
+
 Then fix what the pull gets wrong for local work. Production values are correct
 for production and wrong for a dev machine:
 
