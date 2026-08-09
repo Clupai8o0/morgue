@@ -280,6 +280,18 @@ weakened.
 
 ## 10. Migrating the existing collection
 
+> [!NOTE]
+> **Checked on 2026-08-09: there is nothing to migrate.** Both R2 buckets
+> (`morgue-private`, `morgue-public`) are provisioned, reachable, and hold
+> **0 objects**; the Neon database had **no tables** until the identity
+> migration created them. `bin/publish.mjs` has never run.
+>
+> So steps 3 and 4 below are not a migration — they are simply how the *first*
+> publish must be written. Step 2 has 12 records to insert, from
+> `site/data/items/*.json` on this disk. That removes the riskiest part of
+> phase 3: there is no live keyspace to move underneath a running system, and
+> no outstanding share link to invalidate.
+
 1. Create the owner's `users` row; `role: 'admin'`.
 2. Backfill `vaultItems` from `site/data/items/*.json` with `ownerId` = owner.
 3. Re-key R2 from `media/<slug>/…` to `u/<ownerId>/media/<slug>/…`.
@@ -318,6 +330,51 @@ Each ends at a verification gate. Do not start the next until the gate is green.
 | 5 | Invites: token, `/invite/<token>`, invite-only `signIn` callback | invite is single-use, expires, and cannot be replayed as a share token |
 | 6 | Admin dashboard: users, invites, storage, takedown | suspend kills a live session within one request |
 | 7 | ToS, AUP, DMCA contact, privacy note | — |
+
+## 13a. The three that phase 3 actually forces
+
+§13's list was written before phase 1. With ingest and privacy settled, and
+with §10 now knowing that nothing has been published yet, these are what is
+left — and the second one is not in §13 at all.
+
+**A. Where does the OWNER'S vault get read from?**
+
+§5 puts other people's items in `vaultItems`. The owner's 12 come from
+`items/` through `pnpm build` as static JSON. Three ways to end that split:
+
+| | |
+|---|---|
+| One read path, Postgres | Query on every vault page load, reversing the thing this app was built around (`db/schema.ts`'s old header, and lib/share.ts §"Why the token is stateless"). |
+| Two read paths | Owner keeps static JSON, everyone else queries. Every feature after this gets built twice. |
+| **One WRITE path, static read** | Postgres is the source of truth for every user; a per-user `u/<id>/data/facets.json` is regenerated into R2 **on write**. One model, and Postgres stays off the read path. |
+
+The third is the recommendation. It is what `bin/build.mjs` already does,
+generalised from one vault to N, and it keeps the grid's twelve-video budget
+away from a database round trip.
+
+**B. Can an admin see inside another user's vault?**
+
+Not in §13, and phase 3 forces it, because `/api/media` must derive the user
+segment from the session (§4.1). §9's takedown path needs an admin to action a
+complaint — but *viewing* the item to confirm it is a different power from
+*disabling* it, and "private by default" is worth very little if one role can
+read everything.
+
+- **Disable-only** — an admin acts on a report by slug and owner, never
+  rendering the content. Honest, cheap, and enough for a takedown notice which
+  already tells you what is infringing.
+- **Audited view** — an admin override on `/api/media` plus a visible record.
+  More useful, and a permanent hole in the isolation test.
+
+Recommendation: **disable-only for launch.** It is the smaller promise and it
+can be widened later; the reverse is not true.
+
+**C. Do share tokens carry an owner, or get a version bump?**
+
+Rule 12 and §4.4 both say a token must name the vault it belongs to. Because
+**no link has ever been issued from a deployment** (§10), `v2` can be made
+mandatory and `v1` rejected outright rather than supported alongside it.
+Recommendation: reject `v1`. It costs nothing today and is not available later.
 
 ## 13. Decisions needed from you before Phase 3
 
