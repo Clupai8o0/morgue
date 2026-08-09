@@ -58,3 +58,11 @@ web/next-env.d.ts
 
 # Vercel CLI project link (contains project and org ids).
 .vercel
+
+# Local secrets. `vercel link` wrote `.env*` here, which also matches
+# web/.env.example — tracked on purpose, because it is the documentation of what
+# the app needs. An already-tracked file survives a gitignore rule, so that was
+# latent rather than broken, and latent is exactly how it gets inherited.
+.env
+.env.local
+.env.*.local
