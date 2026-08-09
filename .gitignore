@@ -50,3 +50,6 @@ node_modules/
 web/.next/
 web/out/
 web/next-env.d.ts
+
+# Vercel CLI project link (contains project and org ids).
+.vercel
