@@ -313,6 +313,44 @@ React `useEffect` works.
     it does not run. Run it after touching `proxy.ts`, `lib/share.ts`, or
     anything under `app/s/` or `app/api/share/`.
 
+14. **`MORGUE_LOCAL=1` is a different product, not a permission — and it must stay
+    refusable.** Local mode (`web/src/lib/local.ts`) turns the hosted app into the
+    single-user tool: no accounts, `/` → `/vault`, and `/admin`, `/account`,
+    `/upgrade`, `/signin`, `/reset`, `/verify`, `/s/*`, `/api/share`,
+    `/api/account/*` and `/api/waitlist` return **404 rather than a gate**.
+    Absent, not forbidden — a 403 tells a visitor an admin console is there.
+
+    The flag is honoured only when `hostedSignal()` finds nothing: no `VERCEL`,
+    `AUTH_SECRET`, `DATABASE_URL`, `AUTH_GITHUB_ID` or `AUTH_GOOGLE_ID`. That
+    test is a **disjunction** and is deliberately broader than
+    `authConfigured()`, which is a conjunction; it also imports nothing, so no
+    refactor of `auth.ts` can widen it by accident. **Do not "DRY" the two
+    together** — the duplication is the feature, and a false positive costs
+    nothing while a false negative is an open vault.
+
+    Do **not** key it on `NODE_ENV`. `pnpm morgue` runs a *production* build,
+    because that is the only mode where `proxy.ts` behaves as it does in the
+    deployment being protected. The original brief said to disable the flag in
+    production and that would have broken the feature outright.
+
+    `pnpm verify:local` after touching `lib/local.ts`, `proxy.ts`, the
+    installers or `bin/morgue.mjs`. It boots two production servers: one with
+    no configuration, one configured for accounts *with the flag set*, and
+    asserts the second one's vault stays shut and says out loud that it ignored
+    the flag. `pnpm verify:share` also runs its whole suite with
+    `MORGUE_LOCAL=1`, so all 33 of its assertions double as proof the flag is
+    inert — if you ever remove that line, the bypass check disappears without a
+    single assertion changing.
+
+15. **An uncaptured item is a normal item.** `items/` is gitignored and ffmpeg
+    is the most common thing missing, so "a collection with no media" is the
+    default state of a fresh clone, not an error. `bin/build.mjs` skips the
+    media copy when `out/<slug>/` is absent — it used to `cp` unconditionally
+    and took the whole build down with an ENOENT — and the grid card renders
+    "not captured" instead of a broken image. Keep both. Anything that assumes
+    a poster exists will be wrong on every machine that has not captured yet,
+    which on a public repo is most of them.
+
 ## Never commit the collection
 
 `items/`, `out/` and `site/` are gitignored, deliberately — third-party licensed source and

@@ -25,6 +25,23 @@ import { previewSrc, type PreviewRef, type Rung } from "@/lib/types";
 
 type Status = "idle" | "loading" | "playing" | "failed";
 
+/**
+ * Why the poster has an error handler at all.
+ *
+ * An item with no capture yet has no poster.webp, so /api/media 404s and the
+ * browser paints its own broken-image glyph. On a hosted vault that is one odd
+ * tile. On a first local run — a fresh clone, an empty collection, or a
+ * machine with no ffmpeg — it is EVERY tile, and the first thing the tool ever
+ * shows you is a grid of broken images, which reads as "this is broken" rather
+ * than "nothing has been captured yet".
+ *
+ * Handled here rather than by adding a `hasPoster` field to facets.json,
+ * because the payload is R2-resident and versions independently of the app: a
+ * flag baked at build time cannot know that a later prune removed the file,
+ * and it would say nothing about a 502 from the signing path. "It did not
+ * load" is a runtime fact and this is where runtime is.
+ */
+
 export function PreviewMedia({
   item,
   want = "sm",
@@ -44,6 +61,7 @@ export function PreviewMedia({
   const boxRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState<Status>("idle");
+  const [posterOk, setPosterOk] = useState(true);
 
   const poster = `/api/media/${item.slug}/poster.webp`;
   const video = previewSrc(item, want);
@@ -107,16 +125,23 @@ export function PreviewMedia({
       ref={boxRef}
       className={`bg-canvas rounded-md relative aspect-[16/10] overflow-hidden ${className}`}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element -- media is streamed
-          through our own route, so next/image's optimiser has nothing to add
-          and would only add a second hop. */}
-      <img
-        src={poster}
-        alt=""
-        loading="lazy"
-        decoding="async"
-        className="absolute inset-0 size-full object-cover"
-      />
+      {posterOk ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element -- media is
+              streamed through our own route, so next/image's optimiser has
+              nothing to add and would only add a second hop. */}
+          <img
+            src={poster}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onError={() => setPosterOk(false)}
+            className="absolute inset-0 size-full object-cover"
+          />
+        </>
+      ) : (
+        <NoCapture />
+      )}
 
       {video ? (
         <video
@@ -159,6 +184,20 @@ function Loading() {
         className="border-ink-muted border-t-ink size-[9px] animate-[morgue-spin_700ms_linear_infinite] rounded-pill border-[1.5px]"
       />
       loading
+    </span>
+  );
+}
+
+/**
+ * Stands in for a poster that is not there. Deliberately flat and quiet: the
+ * card still carries a title, a kind and its tags, so an uncaptured item is
+ * still a usable record of something you filed — it just has no picture yet.
+ * A red error state would overstate it.
+ */
+function NoCapture() {
+  return (
+    <span className="bg-surface-1 text-micro text-ink-muted absolute inset-0 flex items-center justify-center uppercase tracking-[0.12em]">
+      not captured
     </span>
   );
 }

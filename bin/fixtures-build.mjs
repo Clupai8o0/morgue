@@ -7,13 +7,56 @@
 
 import { spawn } from 'node:child_process'
 import * as esbuild from 'esbuild'
-import { cp, rm, readdir } from 'node:fs/promises'
+import { cp, rm, readdir, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const FIX = path.join(ROOT, 'fixtures')
+
+// ─── 0. Every fixture must be ours to give away ────────────────────────────
+//
+// This check turns a tidiness rule into a licensing one, and it is worth being
+// clear about why it is now load-bearing.
+//
+// CLAUDE.md has always said fixtures/ is "only for items written from scratch
+// for this repo". Until 2026-08-09 the cost of breaking that was untidiness.
+// Since then two things changed: the root LICENSE grants MIT over fixtures/
+// and nothing else, and docs/LOCAL-MODE.md §7 makes this directory the example
+// set a public checkout SHIPS and a first run renders. So a third-party item
+// landing here is no longer clutter — it is redistribution of somebody else's
+// paid work, under a file that says we may.
+//
+// It runs first, in the script `pnpm test` starts with, so the answer arrives
+// before anything is built rather than after everything is.
+{
+  const bad = []
+  for (const e of await readdir(FIX, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue
+    const metaPath = path.join(FIX, e.name, 'meta.json')
+    if (!existsSync(metaPath)) {
+      bad.push(`${e.name}: no meta.json`)
+      continue
+    }
+    const { license } = JSON.parse(await readFile(metaPath, 'utf8'))
+    // `own` and `mit` both mean "authored here". The other three values in the
+    // vocabulary — paid, unknown, and anything unrecognised — mean it is not
+    // ours to relicense.
+    if (license !== 'own' && license !== 'mit') bad.push(`${e.name}: license "${license}"`)
+  }
+  if (bad.length) {
+    console.error(
+      `\nfixtures/ may hold ONLY code written from scratch for this repo.\n` +
+        `The root LICENSE grants MIT over this directory, and local mode ships it\n` +
+        `as the example set, so anything else here is redistributed under a licence\n` +
+        `we do not hold:\n\n` +
+        bad.map((b) => `  · ${b}`).join('\n') +
+        `\n\nMove it to items/ (gitignored) — see CLAUDE.md, "Never commit the collection".\n`,
+    )
+    process.exit(1)
+  }
+}
 
 // pnpm's nested store means `npx` can resolve the wrong binary; go straight to .bin.
 const BIN = (name) => path.join(ROOT, 'node_modules/.bin', name)

@@ -59,7 +59,20 @@ for (const slug of slugs) {
   const notes = existsSync(path.join(dir, 'notes.md')) ? await readFile(path.join(dir, 'notes.md'), 'utf8') : ''
 
   // Publish media + the runnable item side by side.
-  await cp(outDir, path.join(SITE, 'media', slug), { recursive: true, force: true, filter: (s) => !s.includes('/frames') && publishable(s) })
+  //
+  // The media copy is CONDITIONAL, and that is not defensive coding. `pnpm
+  // capture` writes out/<slug>/, so an item that has never been captured has
+  // no such directory and `cp` throws ENOENT — which took the whole build down
+  // with a stack trace naming a path, not a cause. That is the ordinary state
+  // of a fresh clone (items/ is gitignored, so a public checkout starts empty)
+  // and of any machine without a usable ffmpeg, which is precisely the
+  // audience docs/LOCAL-MODE.md is written for. An uncaptured item is a real
+  // item — a title, tags, notes, source — and it belongs in the index; the
+  // card renders "not captured" instead of a preview and everything else about
+  // it works.
+  if (existsSync(outDir)) {
+    await cp(outDir, path.join(SITE, 'media', slug), { recursive: true, force: true, filter: (s) => !s.includes('/frames') && publishable(s) })
+  }
   await cp(dir, path.join(SITE, 'item', slug), { recursive: true, force: true, filter: publishable })
 
   // Source text for the agent export bundle. Only the files meta.json actually

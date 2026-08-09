@@ -26,6 +26,9 @@
 //   BASE=http://… pnpm verify:web   against a server you already have, with
 //                                   whatever session that server needs
 
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import {
   freshSecret,
@@ -37,14 +40,67 @@ import {
 
 quietenNodeWarnings()
 
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const PORT = Number(process.env.PORT ?? 3216)
 const PGPORT = Number(process.env.PGPORT ?? 55436)
 const EXTERNAL = process.env.BASE
+
+/**
+ * Which built tree to serve the vault from.
+ *
+ * Every assertion below needs CARDS — a reveal that fires, an observer that
+ * assigns a video src, a hover that reaches readyState 4. With no built site
+ * the grid is empty, and the harness reports four failures and then times out
+ * hovering a card that does not exist. That is not the product being broken;
+ * it is the corpus being absent, and the two must not look alike.
+ *
+ * items/ is gitignored, so "absent" is the normal state of every machine but
+ * the one that ingested the collection. Fall back to the committed examples
+ * and say which was used, exactly as bin/verify-share.mjs does — a gate that
+ * can only pass on one laptop is a gate people learn to ignore the red from.
+ */
+function siteDir() {
+  for (const [dir, label] of [['site', 'collection'], ['site-fixtures', 'examples']]) {
+    if (existsSync(path.join(ROOT, dir, 'data', 'facets.json'))) {
+      return { dir: path.join(ROOT, dir), label }
+    }
+  }
+  return null
+}
+
+const SITE = siteDir()
+if (!SITE && !EXTERNAL) {
+  console.error(
+    '\nNothing built to look at. Every assertion here needs cards in the grid.\n\n' +
+      '  pnpm build              (a real collection)\n' +
+      '  pnpm test               (the committed examples)\n',
+  )
+  process.exit(1)
+}
 
 const results = []
 const ok = (name, pass, detail) => {
   results.push({ name, pass, detail })
   console.log(`${pass ? '  ok  ' : ' FAIL '} ${name}${detail ? ` — ${detail}` : ''}`)
+}
+
+/**
+ * An assertion that could not be attempted, with the reason.
+ *
+ * Distinct from a failure and — importantly — LOUD. Three of the checks below
+ * need a recorded preview, and a corpus with no captures cannot supply one:
+ * items/ is gitignored, so a fresh clone has nothing, and the most common
+ * missing prerequisite is an ffmpeg that can encode h.264. Reporting those as
+ * FAIL says the video pipeline is broken when the truth is that no video
+ * exists, and a gate that cries wolf is one people learn to skim.
+ *
+ * Never silently: skipped checks are counted separately and named again in the
+ * summary, so "10/10 passed" can never quietly mean "7 ran".
+ */
+const skipped = []
+const skip = (name, why) => {
+  skipped.push({ name, why })
+  console.log(`  skip  ${name} — ${why}`)
 }
 
 let pgStack = null
@@ -70,10 +126,12 @@ if (!EXTERNAL) {
       AUTH_GOOGLE_ID: '', AUTH_GOOGLE_SECRET: '',
       RESEND_API_KEY: '',
       MORGUE_DATA_SOURCE: 'local',
+      MORGUE_SITE_DIR: SITE.dir,
       NODE_ENV: 'production',
     },
   })
   BASE = server.base
+  console.log(`  corpus: ${SITE.label} — ${path.relative(ROOT, SITE.dir)}/`)
 
   const { hashPassword } = await import('../web/src/lib/password.ts')
   const PW = 'verify web harness password'
@@ -159,34 +217,56 @@ ok('reveal fired', reveal.revealed === reveal.total && reveal.total > 0,
   `${reveal.revealed}/${reveal.total}, opacity ${reveal.opacities.join(',')}`)
 
 // ── 3. Video src assigned by the observer ──────────────────────────────────
+// Read off the built payload rather than the DOM: `hasVideo` is what
+// bin/build.mjs recorded at build time, so this distinguishes "no <video>
+// element was rendered" (a bug) from "no item in this corpus has a preview"
+// (an uncaptured collection, and the normal state of a fresh clone).
+const captured = existsSync(path.join(SITE?.dir ?? '', 'data', 'facets.json'))
+  ? JSON.parse(readFileSync(path.join(SITE.dir, 'data', 'facets.json'), 'utf8'))
+      .filter((f) => f.hasVideo).length
+  : 0
+
 const srcs = await page.evaluate(() => {
   const v = [...document.querySelectorAll('video')]
   return { total: v.length, withSrc: v.filter((x) => x.getAttribute('src')).length }
 })
-ok('observer assigned video src', srcs.withSrc === srcs.total && srcs.total > 0,
-  `${srcs.withSrc}/${srcs.total}`)
+
+const NOTHING_CAPTURED =
+  'no item in this corpus has a preview — run `pnpm capture` (needs ffmpeg with libx264)'
+
+if (!captured) {
+  skip('observer assigned video src', NOTHING_CAPTURED)
+} else {
+  ok('observer assigned video src', srcs.withSrc === srcs.total && srcs.total > 0,
+    `${srcs.withSrc}/${srcs.total}`)
+}
 
 // ── 4. THE question: does hover actually play a video? ─────────────────────
 const card = page.locator('a[href^="/vault/"]').first()
 await card.hover()
-await page.waitForTimeout(2500)
+await page.waitForTimeout(captured ? 2500 : 300)
 
-const play = await page.evaluate(() => {
-  const v = [...document.querySelectorAll('video')].find((x) => !x.paused)
-  if (!v) return { playing: false }
-  return {
-    playing: true,
-    readyState: v.readyState,
-    currentTime: +v.currentTime.toFixed(2),
-    videoSize: `${v.videoWidth}x${v.videoHeight}`,
-    painted: v.hasAttribute('data-painted'),
-    buffered: v.buffered.length ? +v.buffered.end(0).toFixed(2) : 0,
-    error: v.error ? v.error.code : null,
-  }
-})
-ok('hover plays video', play.playing && play.readyState >= 2 && play.currentTime > 0,
-  JSON.stringify(play))
-ok('video painted (opacity swap)', play.painted === true, `data-painted=${play.painted}`)
+if (!captured) {
+  skip('hover plays video', NOTHING_CAPTURED)
+  skip('video painted (opacity swap)', NOTHING_CAPTURED)
+} else {
+  const play = await page.evaluate(() => {
+    const v = [...document.querySelectorAll('video')].find((x) => !x.paused)
+    if (!v) return { playing: false }
+    return {
+      playing: true,
+      readyState: v.readyState,
+      currentTime: +v.currentTime.toFixed(2),
+      videoSize: `${v.videoWidth}x${v.videoHeight}`,
+      painted: v.hasAttribute('data-painted'),
+      buffered: v.buffered.length ? +v.buffered.end(0).toFixed(2) : 0,
+      error: v.error ? v.error.code : null,
+    }
+  })
+  ok('hover plays video', play.playing && play.readyState >= 2 && play.currentTime > 0,
+    JSON.stringify(play))
+  ok('video painted (opacity swap)', play.painted === true, `data-painted=${play.painted}`)
+}
 
 // ── 5. Lenis + GSAP ticker ─────────────────────────────────────────────────
 // Tested on /styleguide, not /vault: with only the fixture corpus the vault is
@@ -225,11 +305,28 @@ await page.waitForTimeout(500)
 const after = await wrapper.evaluate((el) => getComputedStyle(el).transform)
 ok('magnetic displaces on hover', before !== after, `${before} → ${after}`)
 
-ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | ') || 'clean')
+// A poster that 404s is EXPECTED on an uncaptured corpus — the card renders a
+// "not captured" placeholder for exactly this case (CLAUDE.md rule 15). Those
+// are filtered only when the payload says nothing was captured, so a real 404
+// on a collection that HAS media still fails here.
+const realErrors = captured
+  ? errors
+  : errors.filter((e) => !/status of 404/.test(e))
+ok('no page errors', realErrors.length === 0, realErrors.slice(0, 3).join(' | ') || 'clean')
+if (!captured && errors.length !== realErrors.length) {
+  console.log(`        ${errors.length - realErrors.length} media 404(s) ignored — nothing captured in this corpus`)
+}
 
 await browser.close()
 cleanup()
 
 const failed = results.filter((r) => !r.pass)
 console.log(`\n${results.length - failed.length}/${results.length} passed`)
+if (skipped.length) {
+  // Named again, deliberately. A run that reports "7/7 passed" and quietly did
+  // not attempt three checks is the same lie as a gate that counts failures
+  // and exits 0.
+  console.log(`${skipped.length} not run:`)
+  for (const s of skipped) console.log(`  · ${s.name} — ${s.why}`)
+}
 process.exit(failed.length ? 1 : 0)

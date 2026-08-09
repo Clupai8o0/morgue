@@ -5,6 +5,8 @@
   "type": "module",
   "description": "A private reference collection of UI components and web animations, with deterministic video capture.",
   "scripts": {
+    "morgue": "node bin/morgue.mjs",
+    "doctor": "node bin/doctor.mjs",
     "capture": "node bin/capture.mjs",
     "renditions": "node bin/renditions.mjs",
     "build": "node bin/build.mjs",
@@ -16,6 +18,7 @@
     "fixtures:check": "MORGUE_SRC=fixtures node bin/check.mjs",
     "verify:web": "node bin/verify-web.mjs",
     "verify:share": "node bin/verify-share.mjs",
+    "verify:local": "node bin/verify-local.mjs",
     "test": "pnpm fixtures:build && pnpm fixtures:capture && pnpm fixtures:site && pnpm fixtures:check",
     "web:dev": "pnpm --filter web dev",
     "web:build": "pnpm --filter web build",

@@ -194,6 +194,57 @@ lock the door, never open it.
 > accounts means no sign-in — which is strictly harder to get wrong than
 > remembering to leave a string blank.
 
+## Local mode is one flag on one codebase, and it is refused, not trusted
+*2026-08-09*
+
+morgue runs two ways: a hosted multi-tenant vault, and a single-user tool on a
+designer's laptop with no accounts at all. That could have been a second
+package. It is `MORGUE_LOCAL=1` on the same build.
+
+**Why not a fork.** A second copy of `web/` diverges within a month and every
+bug gets fixed twice. But the argument that actually settled it only became
+visible once the gate existed: **the safety of local mode is a property of the
+shared gate.** `pnpm verify:share` runs its entire 33-assertion suite with
+`MORGUE_LOCAL=1` set, so every one of those assertions is simultaneously a
+proof that the flag is inert on a deployment with accounts. A separate
+distribution could not have that property — there would be no shared gate to
+prove anything about.
+
+**Why the flag is refusable.** A boolean that opens a door is an authentication
+bypass one environment variable wide. If setting `MORGUE_LOCAL` on the hosted
+deployment disabled the gate, then a leaked dashboard session or a PR touching
+`vercel.json` owns the vault. So local mode is not "the operator asked for it".
+It is "the operator asked for it **and** nothing about this deployment looks
+hosted" — `VERCEL`, `AUTH_SECRET`, `DATABASE_URL`, `AUTH_GITHUB_ID` or
+`AUTH_GOOGLE_ID`, any one of which refuses it.
+
+That test is deliberately a *disjunction*, where `authConfigured()` is a
+conjunction, and `lib/local.ts` imports nothing so that no refactor of
+`auth.ts` can widen it by accident. The duplication is the feature. Broader is
+the safe direction: a false positive means local mode quietly does not engage,
+a false negative means an open vault.
+
+**What it is NOT keyed on: `NODE_ENV`.** The original brief said to ignore the
+flag in production. That is wrong and would have broken the feature — `pnpm
+morgue` runs a *production build*, because that is the only mode where
+`proxy.ts` behaves the way it does in the deployment being protected. A flag
+that switched itself off in production would switch itself off in the only
+configuration it ships in.
+
+**Rejected: deleting `proxy.ts` for local mode.** Tempting and unsafe. Rule 6
+exists because that gate was once silently not running at all, and a "local"
+edit that removes it invites a merge that removes it everywhere. Local mode
+takes a different branch; it does not remove the branch.
+
+**Rejected: hiding the cloud dependencies behind dynamic imports.** The brief
+assumed the hosted product carried bloat a local user should not pay for.
+Measured: `@aws-sdk`, `drizzle-orm`, `next-auth`, `@neondatabase` and `resend`
+together are 34 MB of a 614 MB `node_modules` — 5.5% — and appear in **zero**
+of the 19 JavaScript files served to a browser. Playwright's Chrome is 387 MB.
+The surgery would have bought a fragile import graph for nothing measurable, so
+the effort went into the installer and the empty-collection experience instead.
+See FINDINGS.md.
+
 ## The grid never runs the code it displays
 
 Measured, not assumed: 40 WebGL contexts created leaves exactly 16 alive, and

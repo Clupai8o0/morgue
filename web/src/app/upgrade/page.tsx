@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/auth";
+import { localMode } from "@/lib/local";
 import { db, dbConfigured, schema } from "@/db";
 import { capsFor, formatBytes, planOf, usageFor } from "@/lib/plan";
 import { findUserById } from "@/lib/users";
@@ -30,6 +32,9 @@ export const dynamic = "force-dynamic";
  * is the only place that has to render the difference.
  */
 export default async function UpgradePage() {
+  // Nobody is metering a folder on your own disk. Doubled with proxy.ts.
+  if (localMode()) notFound();
+
   const session = await auth();
   const user = session?.user?.id ? await findUserById(session.user.id) : null;
 

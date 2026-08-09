@@ -7,6 +7,7 @@ import {
   shareAllows,
   verifyShareToken,
 } from "@/lib/share";
+import { hostedOnly, localMode, localModeRefused } from "@/lib/local";
 
 /**
  * Route gate.
@@ -30,6 +31,14 @@ import {
  * share path is checked FIRST only when there is no session, so a signed-in
  * user never has their own access narrowed by a share cookie they happen to be
  * carrying.
+ *
+ * ...AND A THIRD THAT IS NOT A WAY IN AT ALL. Local mode (@/lib/local) is a
+ * different deployment, not a different permission: one person, one machine,
+ * no accounts, so there is nobody to authenticate and the hosted routes do not
+ * exist. It is checked before everything else because it decides which product
+ * this process is, and it can only engage when nothing in the environment
+ * suggests a hosted one. See lib/local.ts for why that check is a disjunction
+ * and why it is deliberately not shared with authConfigured().
  */
 
 const PROTECTED = [
@@ -129,7 +138,48 @@ function shareGate(req: NextRequest): NextResponse | null {
   return NextResponse.next({ request: { headers } });
 }
 
+/**
+ * Said once per process, not once per request — a line on every asset fetch is
+ * a line nobody reads. Module scope rather than a lazy flag because both
+ * branches are pure environment reads and neither can change while running.
+ */
+{
+  const refusedBy = localModeRefused();
+  if (localMode()) {
+    console.log(
+      "[proxy] local mode: no accounts, no sign-in, everything open. " +
+        "The hosted routes (/admin, /account, /signin, /api/share …) return 404.",
+    );
+  } else if (refusedBy) {
+    // Loud, because the alternative reading of a sign-in page here is "the
+    // flag is broken", and someone acting on that reading starts deleting the
+    // gate. Name the variable so the next step is obvious.
+    console.warn(
+      `[proxy] MORGUE_LOCAL=1 was IGNORED: ${refusedBy} is set, which means ` +
+        `this deployment has accounts. Local mode never disables the gate on ` +
+        `a hosted deployment — see web/src/lib/local.ts.`,
+    );
+  }
+}
+
 export default function proxy(req: NextRequest, ctx: NextFetchEvent) {
+  // Local mode first: it decides which product this is, and every check below
+  // is about a hosted one.
+  if (localMode()) {
+    if (hostedOnly(req.nextUrl.pathname)) {
+      return new NextResponse("Not found", { status: 404 });
+    }
+    // The landing page is marketing for a product this deployment is not
+    // running. Redirect rather than render, and do it here rather than with a
+    // `redirect()` in the page: page.tsx is `force-static`, so that decision
+    // would be baked at build time and a build made without the flag would
+    // keep serving the waitlist form to someone running locally.
+    if (req.nextUrl.pathname === "/") {
+      return NextResponse.redirect(new URL("/vault", req.nextUrl.origin));
+    }
+    return;
+  }
+
   if (!isProtected(req.nextUrl.pathname)) return;
 
   // Never reachable with a share cookie, at any stage, configured or not.

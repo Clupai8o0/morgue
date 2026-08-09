@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { desc, eq } from "drizzle-orm";
+import { localMode } from "@/lib/local";
 import { db, dbConfigured } from "@/db";
 import { waitlist, type Waitlist } from "@/db/schema";
 import { ShareAdmin } from "@/components/vault/share-admin";
@@ -33,6 +35,11 @@ async function setStatus(id: string, status: "approved" | "declined") {
 }
 
 export default async function AdminPage() {
+  // A local morgue has one user and no waitlist to review. Doubled with
+  // proxy.ts for the same reason the admin role check is — a console that
+  // manages other people should not depend on one matcher being right.
+  if (localMode()) notFound();
+
   if (!dbConfigured()) {
     return (
       <Shell>

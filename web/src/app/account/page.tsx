@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { configuredProviders } from "@/auth";
 import { AccountPanel } from "@/components/account-panel";
+import { localMode } from "@/lib/local";
 
 export const metadata: Metadata = { title: "Your account" };
 export const dynamic = "force-dynamic";
@@ -12,6 +14,10 @@ export const dynamic = "force-dynamic";
  * /admin gets. This component never renders for a shared viewer.
  */
 export default function AccountPage() {
+  // There is no account to manage in local mode — no row, no password, no
+  // address to verify. Doubled with proxy.ts, like /admin.
+  if (localMode()) notFound();
+
   return (
     <main className="mx-auto w-full max-w-[560px] px-lg py-xxl">
       <header className="mb-xl gap-md flex items-baseline justify-between">

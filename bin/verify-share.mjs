@@ -42,7 +42,7 @@
 
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -51,6 +51,45 @@ const PORT = Number(process.env.PORT ?? 3219)
 const EXTERNAL = process.env.BASE
 const BASE = EXTERNAL ?? `http://127.0.0.1:${PORT}`
 const SECRET = process.env.AUTH_SECRET || randomBytes(32).toString('base64')
+
+/**
+ * Two real slugs to scope links to, and the tree they live in.
+ *
+ * These used to be hardcoded — `blunt-template` and `gooey-text-reveal`, both
+ * from the private collection. items/ is gitignored, so on any machine but the
+ * one that ingested them the four "opens its own item / media" assertions
+ * failed at 404 and the suite exited 1. A gate that can only pass on one
+ * laptop is not a gate; it is a thing people learn to ignore the red from,
+ * which is the same failure as `pnpm check` counting errors and exiting 0.
+ *
+ * So: prefer the real collection, fall back to the committed examples, and say
+ * which was used. The scoping assertions do not care what the item IS — only
+ * that one link opens it and another link does not.
+ */
+function corpus() {
+  for (const [dir, label] of [['site', 'collection'], ['site-fixtures', 'examples']]) {
+    const index = path.join(ROOT, dir, 'items.json')
+    if (!existsSync(index)) continue
+    const slugs = JSON.parse(readFileSync(index, 'utf8')).map((r) => r.slug).sort()
+    // Two DIFFERENT slugs, because the whole point of an item-scoped link is
+    // that it refuses the other one.
+    if (slugs.length >= 2) return { dir: path.join(ROOT, dir), mine: slugs[0], other: slugs[1], label }
+  }
+  return null
+}
+
+const CORPUS = corpus()
+if (!CORPUS && !EXTERNAL) {
+  console.error(
+    '\nNothing built to share. This suite needs at least two items to prove that an\n' +
+      'item-scoped link opens one and refuses the other.\n\n' +
+      '  pnpm build              (a real collection)\n' +
+      '  pnpm test               (the committed examples)\n',
+  )
+  process.exit(1)
+}
+const MINE = CORPUS?.mine ?? 'blunt-template'
+const OTHER = CORPUS?.other ?? 'gooey-text-reveal'
 
 // Set before the module is imported so its lazy key derivation sees it.
 process.env.AUTH_SECRET = SECRET
@@ -84,6 +123,23 @@ async function boot() {
     AUTH_GITHUB_ID: 'verify-share-dummy',
     AUTH_GITHUB_SECRET: 'verify-share-dummy',
     DATABASE_URL: '',
+    // Point the app at whichever tree corpus() found, so the item and media
+    // assertions have something real behind them on a machine with no
+    // collection.
+    MORGUE_DATA_SOURCE: 'local',
+    MORGUE_SITE_DIR: CORPUS.dir,
+    // MORGUE_LOCAL=1 ON A CONFIGURED DEPLOYMENT, deliberately. Local mode
+    // (web/src/lib/local.ts) opens everything and 404s the hosted routes, so
+    // if the flag were honoured here EVERY assertion below would fail — the
+    // sign-in wall would be gone, /admin would not exist, and /s/<token> would
+    // 404 instead of redeeming. Setting it turns this entire suite into a
+    // proof that the flag is inert wherever accounts exist, at the cost of one
+    // line, which is a far better test than one more explicit assertion.
+    //
+    // docs/LOCAL-MODE.md §5 asks for exactly this, and asks for it HERE rather
+    // than only in verify:local, because a bypass check belongs in the suite
+    // that would notice a bypass.
+    MORGUE_LOCAL: '1',
   }
 
   if (!existsSync(path.join(ROOT, 'web', '.next', 'BUILD_ID'))) {
@@ -131,6 +187,24 @@ const refused = (res) =>
 
 const opened = (res) => !refused(res)
 
+/**
+ * Whether the GATE let a request through to the media route, which is a
+ * different question from whether the file was there.
+ *
+ * `opened()` treats every 4xx as a refusal, so a poster that has never been
+ * captured — the state of any machine without a usable ffmpeg, and of every
+ * fresh clone — reported as "share link is refused its own media". That is a
+ * false alarm about the one thing this suite exists to check, and a false
+ * alarm on a security gate is expensive: it trains the reader to skim past a
+ * red line.
+ *
+ * A 404 here means proxy.ts allowed the request and the route found no file.
+ * Only a redirect to /signin or a 403 means refused. Reported with the status
+ * either way, so a 404 is never mistaken for a full pass.
+ */
+const notRefused = (res) => res.status === 404 || opened(res)
+const mediaNote = (res) => (res.status === 404 ? '404 — nothing captured here' : String(res.status))
+
 async function redeem(token) {
   const r = await get(`/s/${encodeURIComponent(token)}`)
   // Location is absolute and Next resolves it against the request's own Host,
@@ -144,7 +218,11 @@ async function redeem(token) {
 // ─── run ─────────────────────────────────────────────────────────────────────
 
 await boot()
-console.log(`\nverifying share links against ${BASE} (production build, auth configured)\n`)
+console.log(
+  `\nverifying share links against ${BASE} (production build, auth configured)` +
+    (CORPUS ? `\n  corpus: ${CORPUS.label} — ${MINE} / ${OTHER}` : '') +
+    '\n',
+)
 
 // 1. Baseline — the wall is up.
 {
@@ -152,6 +230,16 @@ console.log(`\nverifying share links against ${BASE} (production build, auth con
   refused(r) ? ok('vault is closed without a session', String(r.status)) : bad('vault is closed without a session', String(r.status))
   const a = await get('/admin')
   refused(a) ? ok('admin is closed without a session', String(a.status)) : bad('admin is closed without a session', String(a.status))
+
+  // Said explicitly as well as implicitly. The whole suite already fails if
+  // MORGUE_LOCAL is honoured here (see boot()), but an implicit proof reads as
+  // an accident to whoever is looking at a red run, and the first thing they
+  // would try is removing the flag from the env above — which would remove the
+  // check without removing a single assertion.
+  if (!EXTERNAL) {
+    const signin = await get('/signin')
+    is('MORGUE_LOCAL=1 does not delete /signin here', signin.status, 200)
+  }
 }
 
 // 2. /api/share is owner-only from every angle.
@@ -183,11 +271,13 @@ console.log(`\nverifying share links against ${BASE} (production build, auth con
     const hasBanner = /shared view/i.test(html)
     hasBanner ? ok('renders the shared-view banner') : bad('renders the shared-view banner', 'text not found')
 
-    const item = await get('/vault/blunt-template', cookie)
+    const item = await get(`/vault/${MINE}`, cookie)
     opened(item) ? ok('opens any item page', String(item.status)) : bad('opens any item page', String(item.status))
 
-    const media = await get('/api/media/blunt-template/poster.webp', cookie)
-    opened(media) ? ok('opens media', String(media.status)) : bad('opens media', String(media.status))
+    const media = await get(`/api/media/${MINE}/poster.webp`, cookie)
+    notRefused(media)
+      ? ok('is allowed through to media', mediaNote(media))
+      : bad('is allowed through to media', String(media.status))
 
     // The ones that must never open.
     const admin = await get('/admin', cookie)
@@ -227,24 +317,26 @@ console.log(`\nverifying share links against ${BASE} (production build, auth con
 
 // 4. An item-scoped link is genuinely boxed in.
 {
-  const { token } = share.mintShareToken({ kind: 'item', slug: 'blunt-template' }, 3600)
+  const { token } = share.mintShareToken({ kind: 'item', slug: MINE }, 3600)
   const { cookie, to } = await redeem(token)
-  is('item link lands on its item', to, '/vault/blunt-template')
+  is('item link lands on its item', to, `/vault/${MINE}`)
 
-  const mine = await get('/vault/blunt-template', cookie)
+  const mine = await get(`/vault/${MINE}`, cookie)
   opened(mine) ? ok('opens its own item', String(mine.status)) : bad('opens its own item', String(mine.status))
 
-  const other = await get('/vault/gooey-text-reveal', cookie)
+  const other = await get(`/vault/${OTHER}`, cookie)
   refused(other) ? ok('is REFUSED another item', String(other.status)) : bad('is REFUSED another item', String(other.status))
 
   const grid = await get('/vault', cookie)
   refused(grid) ? ok('is REFUSED the vault index', String(grid.status)) : bad('is REFUSED the vault index', String(grid.status))
 
-  const otherMedia = await get('/api/media/gooey-text-reveal/poster.webp', cookie)
+  const otherMedia = await get(`/api/media/${OTHER}/poster.webp`, cookie)
   refused(otherMedia) ? ok('is REFUSED another item’s media', String(otherMedia.status)) : bad('is REFUSED another item’s media', String(otherMedia.status))
 
-  const ownMedia = await get('/api/media/blunt-template/poster.webp', cookie)
-  opened(ownMedia) ? ok('opens its own media', String(ownMedia.status)) : bad('opens its own media', String(ownMedia.status))
+  const ownMedia = await get(`/api/media/${MINE}/poster.webp`, cookie)
+  notRefused(ownMedia)
+    ? ok('is allowed through to its own media', mediaNote(ownMedia))
+    : bad('is allowed through to its own media', String(ownMedia.status))
 }
 
 // 5. Forgery and expiry.
@@ -257,7 +349,7 @@ console.log(`\nverifying share links against ${BASE} (production build, auth con
 
   // Payload tampering: flip the scope to vault on an item token and re-encode
   // WITHOUT resigning. This is the attack the signature exists to stop.
-  const item = share.mintShareToken({ kind: 'item', slug: 'blunt-template' }, 3600)
+  const item = share.mintShareToken({ kind: 'item', slug: MINE }, 3600)
   const parts = item.token.split('.')
   const decoded = JSON.parse(Buffer.from(parts[1], 'base64url').toString())
   decoded.s = 'v'
@@ -285,7 +377,7 @@ console.log(`\nverifying share links against ${BASE} (production build, auth con
 
 // 6. A stale share cookie must never lock an owner out.
 {
-  const { token } = share.mintShareToken({ kind: 'item', slug: 'blunt-template' }, 3600)
+  const { token } = share.mintShareToken({ kind: 'item', slug: MINE }, 3600)
   const { cookie } = await redeem(token)
   // Carrying an item cookie to a path it does not cover falls through to the
   // owner gate rather than hard-refusing — the visitor may be a signed-in

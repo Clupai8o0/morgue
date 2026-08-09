@@ -3,7 +3,7 @@
 Measurements taken on this machine (macOS, Apple M5 Pro, Chrome via Playwright 1.62.1,
 ffmpeg 8.1.1). Everything here is either reproduced locally or explicitly marked unverified.
 
-Last updated: 2026-08-08. Figures printed by `du -sh` are MiB as shown; byte-exact figures
+Last updated: 2026-08-09. Figures printed by `du -sh` are MiB as shown; byte-exact figures
 are decimal bytes.
 
 Measurements are kept as taken, with the date they were taken on. Where a later session
@@ -330,6 +330,55 @@ Which means the 300-item figure is now a question about *mix*, not about bytes p
 All-archive-backed is ~6 MB; all-standalone-and-optimised is ~1 GB; the 2026-08-07 path was
 ~6.2 GB. Nothing on the ingest path applies the optimiser automatically, so the middle number
 is the one to plan against.
+
+## Local mode is not where the weight is (2026-08-09)
+
+Measured on Fedora, Node 24.18, Next 16.3.0, after `pnpm install` + `pnpm web:build`.
+Different machine from the figures above — this one has no collection and no
+libx264 — so these are install-and-bundle numbers, not capture numbers.
+
+`docs/LOCAL-MODE.md` §3 assumed the hosted product carried "production bloat" a
+local user should not pay for, and listed six dependency groups to hide behind
+dynamic imports. **The assumption was wrong, and the measurement is why that
+work was not done.**
+
+| | Size | Share of `node_modules` |
+|---|---|---|
+| `node_modules` (root, pnpm store) | **614 MB** | — |
+| `@aws-sdk` | 12 MB | 2.0% |
+| `drizzle-orm` | 17 MB | 2.8% |
+| `next-auth` + `@auth/*` | 5.3 MB | 0.9% |
+| `pg` + `@neondatabase/serverless` | 1.2 MB | 0.2% |
+| `resend` | 280 KB | <0.1% |
+| **all of the above** | **34 MB** | **5.5%** |
+| Playwright's Chrome, on disk | **387 MB** | — |
+
+And in the browser, which is the number that decides whether any of it matters:
+
+| Pattern | Files containing it, of the 19 JS files served |
+|---|---|
+| `aws-sdk` | **0** |
+| `neondatabase` | **0** |
+| `drizzle` | **0** |
+| `next-auth` | **0** |
+| `resend` | **0** |
+
+Total client JavaScript: **1.2 MB across 19 files.** None of the account or
+cloud stack reaches it — Next already keeps server-only modules server-side, so
+there was nothing to save and the proposed import surgery would have bought a
+fragile module graph for zero measured benefit.
+
+**The conclusion that follows:** a local install is expensive because of a
+browser engine and an encoder, not because of the hosted product's
+dependencies. Removing every account-related package would cut a 600 MB install
+to 580 MB while Chrome alone is 387 MB. So the two tiers in `pnpm doctor` are
+split on ffmpeg and Chrome — the things that actually cost something and
+actually fail — and not on anything in this table.
+
+> Next 16.3 with Turbopack prints no per-route size column, so `next build`'s
+> "reported route sizes" that LOCAL-MODE.md §3 asks for do not exist to record.
+> The `.next/static` measurement above is the substitute and is a better
+> question anyway: it is what a browser downloads.
 
 ## Not verified here
 

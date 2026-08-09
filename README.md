@@ -18,6 +18,54 @@ controlled vocabulary, and writes down how the effect actually works. Later you 
 
 ---
 
+## Run your own
+
+morgue runs locally with **no accounts, no database and no cloud services**.
+Nothing leaves the machine.
+
+```bash
+git clone https://github.com/Clupai8o0/morgue.git
+cd morgue
+pnpm install
+pnpm morgue
+```
+
+That builds what needs building, starts a server and opens a browser. If you
+would rather not think about prerequisites:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Clupai8o0/morgue/main/install.sh | sh   # macOS, Linux
+irm https://raw.githubusercontent.com/Clupai8o0/morgue/main/install.ps1 | iex        # Windows
+```
+
+Either way, `pnpm doctor` will tell you what this machine is missing and give
+you the one command that fixes each thing — **all of them at once**, rather than
+one per attempt.
+
+Two tiers, and you probably only need the first:
+
+| | Needs | Cost |
+|---|---|---|
+| **Browse** — search, filter, notes, export | Node 22+, pnpm | ~600 MB of `node_modules` |
+| **Capture** — record new previews | ffmpeg with libx264, Playwright's Chrome | ~400 MB more |
+
+A fresh clone has an **empty** collection, because the collection cannot be
+distributed. First run shows the eleven examples in `fixtures/`, which were
+written from scratch for this repo and are MIT-licensed. Put your own work in
+`items/<slug>/` and it takes over.
+
+[SETUP.md](./SETUP.md) is the full walkthrough — and it is written so you can
+hand it to an agent instead of reading it:
+
+> *Set up morgue on this machine following SETUP.md, then run `pnpm morgue`.*
+
+Want the hosted, multi-user version instead? That is `pnpm web:dev` and
+[docs/MULTI-TENANT.md](./docs/MULTI-TENANT.md). The two share one codebase and
+one flag; local mode is refused on any deployment that has accounts, which
+[web/src/lib/local.ts](./web/src/lib/local.ts) explains at length.
+
+---
+
 ## Why it is built this way
 
 Every serious component gallery converges on the same rule: **the browse grid never runs code.**
@@ -84,6 +132,9 @@ Each of these is a fixture in `fixtures/`, and `pnpm test` runs the whole corpus
 ```bash
 pnpm install
 
+pnpm doctor             # what this machine is missing, and the fix for each
+pnpm morgue             # build if needed, serve, open a browser — no accounts
+
 pnpm capture            # capture every item in items/
 pnpm capture <slug>     # just one
 pnpm build              # generate site/ — static grid, no framework
@@ -102,9 +153,19 @@ Run its scripts **from the repo root**, not from inside `web/`:
 pnpm web:dev            # http://localhost:3210 — matches verify:web and the OAuth callback
 pnpm web:build
 pnpm verify:web         # drives real Chrome via Playwright — see below
+pnpm verify:local       # local mode works, and is inert where accounts exist
 pnpm db:push            # apply the Drizzle schema to Neon
 pnpm publish:r2         # upload out/ + site/data to R2  (--dry-run to preview)
 ```
+
+`pnpm morgue` runs the same app with `MORGUE_LOCAL=1`, which turns off
+everything that exists because the hosted product has more than one user: no
+sign-in, no database, no R2, and `/admin`, `/account`, `/signin`, `/api/share`
+and friends return 404 rather than a gate. The flag is **ignored** wherever
+`AUTH_SECRET`, `DATABASE_URL`, an OAuth id or `VERCEL` is set — otherwise it
+would be an authentication bypass one environment variable wide. `pnpm
+verify:local` boots a configured server with the flag set and proves the vault
+stays shut.
 
 > Running `pnpm build` *inside* `web/` fails with `ERR_PNPM_IGNORED_BUILDS`.
 > pnpm re-evaluates build approval without the workspace root's `allowBuilds`,
@@ -120,11 +181,17 @@ check that would have caught it in seconds.
 
 ### Two surfaces, one boundary
 
-| | Public | Private |
-|---|---|---|
-| Route | `/`, `/styleguide` | `/vault`, `/admin`, `/api/media` |
-| Auth | none | GitHub OAuth, allowlisted |
-| Media | `morgue-public` bucket | `morgue-private`, signed URLs only |
+| | Public | Private | Local |
+|---|---|---|---|
+| Route | `/`, `/styleguide` | `/vault`, `/admin`, `/api/media` | `/vault` only — the rest 404 |
+| Auth | none | a row in `users`; GitHub, Google or password | none, and nobody to authenticate |
+| Media | `morgue-public` bucket | `morgue-private`, signed URLs only | the `site/` directory on disk |
+
+Access used to be a comma-separated allowlist of GitHub logins in an
+environment variable. It is now a row in `users` with `status = 'active'`,
+created at the CLI with `pnpm user add` — but the property that mattered
+survives the change: with no database there are no accounts, so a deployment
+with a missing configuration lets nobody in rather than everybody.
 
 The private R2 bucket has **no public access**. Gating the app is worthless if
 the mp4 behind it is fetchable by anyone holding a CDN link — and CDN links

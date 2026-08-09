@@ -1,7 +1,32 @@
 # Local mode — open-sourcing morgue for people who are not you
 
-Status: **design, nothing built.** Written 2026-08-09 to be handed to another
-agent and picked up cold.
+Status: **built, 2026-08-09.** Phases 1, 2, 4 and 5 are done and gated; phase 3
+is written but has never run on a cold machine, which is the one claim in this
+document that is still unverified. Written the same day as a design brief to be
+handed to another agent — the design sections below are kept as written, with
+outcomes recorded against them, because several of the predictions turned out
+to be wrong in useful ways (see §3 and §10).
+
+**What exists now**
+
+| | |
+|---|---|
+| `pnpm doctor` | every missing prerequisite at once, per-platform fix for each |
+| `pnpm morgue` | build if needed → serve → open a browser |
+| `MORGUE_LOCAL=1` | `web/src/lib/local.ts`, honoured in `proxy.ts` |
+| `pnpm verify:local` | 26 assertions, two servers |
+| `SETUP.md` | agent-readable setup, and the spec the installers implement |
+| `install.sh`, `install.ps1` | one-line install for macOS/Linux and Windows |
+| `CONTRIBUTING.md`, `LICENSE` | public-repo hygiene |
+
+**What does not**
+
+- Nothing has been run on a **cold machine**. §6 calls that the acceptance test
+  and it remains the honest gap; `install.ps1` has not been executed at all,
+  including its syntax, because no Windows or PowerShell was available.
+- The licence question in §9.3 is **still open**, and it is the one that decides
+  whether any of this can be published. `LICENSE` grants MIT over `fixtures/`
+  only; `bin/` and `web/` are all-rights-reserved pending an answer.
 
 Read [CLAUDE.md](../CLAUDE.md) first — it is the folder contract and it is
 authoritative. [MULTI-TENANT.md](./MULTI-TENANT.md) is the *hosted* product;
@@ -79,6 +104,16 @@ sizes and `node_modules` size before and after, and put the numbers in
 [FINDINGS.md](./FINDINGS.md). If the saving is small, say so — the honest
 outcome may be that "bloat" was mostly server-only code that never reached the
 browser anyway, in which case the real deliverable is §4 and §7.
+
+> **Measured, 2026-08-09 — and the table above is wrong about what matters.**
+> Not one of `@aws-sdk`, `@neondatabase`, `drizzle-orm`, `next-auth` or
+> `resend` appears in any of the 19 JavaScript files served to a browser. They
+> are 34 MB of a 614 MB `node_modules` — **5.5%** — against Playwright's
+> Chrome at 387 MB. So "production bloat" is a rounding error next to the
+> browser engine, exactly as this section suspected, and the dynamic-import
+> surgery it proposes was not done: it would have bought nothing measurable and
+> cost a fragile import graph. The real deliverables were §4 and §7, and that
+> is where the work went. Full numbers in [FINDINGS.md](./FINDINGS.md).
 
 ## 4. The installer
 
@@ -180,24 +215,98 @@ ingest a URL as `kind: "reference"` — the cheapest ingest in the contract, and
 
 ## 8. Phases
 
-| # | Phase | Gate |
-|---|---|---|
-| 1 | Preflight checks in `bin/capture.mjs` and a `pnpm doctor` that names every missing prerequisite at once | Deleting ffmpeg from PATH produces one clear sentence, not an ENOENT |
-| 2 | `MORGUE_LOCAL=1`: hosted routes off, cloud clients behind dynamic imports, `/` → `/vault` | `pnpm verify:local`; before/after sizes in FINDINGS.md |
-| 3 | `SETUP.md` for an agent, then `install.sh` and `install.ps1` derived from it | Cold VM per platform, install line only |
-| 4 | `pnpm morgue` one-command run, and first-run seeding from `fixtures/` | A non-technical person, unaided, reaches a populated vault |
-| 5 | Public-repo hygiene: LICENCE, CONTRIBUTING, an `.env.example` with everything optional, and a README that leads with the local path rather than the hosted one | A fresh clone with no secrets runs |
+| # | Phase | Gate | State |
+|---|---|---|---|
+| 1 | Preflight checks in `bin/capture.mjs` and a `pnpm doctor` that names every missing prerequisite at once | Deleting ffmpeg from PATH produces one clear sentence, not an ENOENT | **done** — and it found a live one, see §10 |
+| 2 | `MORGUE_LOCAL=1`: hosted routes off, cloud clients behind dynamic imports, `/` → `/vault` | `pnpm verify:local`; before/after sizes in FINDINGS.md | **done**, 26/26 — dynamic imports deliberately not done, see §3 |
+| 3 | `SETUP.md` for an agent, then `install.sh` and `install.ps1` derived from it | Cold VM per platform, install line only | written; `install.sh` runs against a warm clone, **cold VM not done**, `install.ps1` never executed |
+| 4 | `pnpm morgue` one-command run, and first-run seeding from `fixtures/` | A non-technical person, unaided, reaches a populated vault | **done** — verified in a real browser: 11 cards, 0 broken images. The *person* half of that gate is untested |
+| 5 | Public-repo hygiene: LICENCE, CONTRIBUTING, an `.env.example` with everything optional, and a README that leads with the local path rather than the hosted one | A fresh clone with no secrets runs | **done** — with the licence itself still open, §9.3 |
+
+## 8a. What phase 1 found
+
+The preflight was supposed to be defensive. It was not: on the machine this was
+built on, `pnpm doctor` immediately reported *"ffmpeg installed, but built
+without libx264"* — Fedora ships `ffmpeg-free`, which passes `command -v` and
+every presence check and then fails at the encode. That is precisely the class
+of failure §2 predicted would be the single most likely point of failure for a
+non-technical user, found on the first machine it ran on.
+
+Two more fell out of building phase 4, both of which had been live for a long
+time and neither of which any existing gate could see:
+
+- **`pnpm build` crashed on any item that had never been captured.**
+  `bin/build.mjs` copied `out/<slug>/` unconditionally, so a collection with no
+  captures — a fresh clone, or any machine without a working ffmpeg — died with
+  an ENOENT naming a path. That is the *default state of this entire mode*.
+- **`pnpm verify:share` could only pass on one laptop.** Its assertions were
+  scoped to two slugs from the private collection, so on any other machine four
+  of them 404'd and the suite exited 1. It now derives its slugs from whichever
+  tree is built and reports which it used — and it separately no longer confuses
+  "the gate refused me" with "the file was never captured", which was turning an
+  environmental gap into a red line on a security gate.
 
 ## 9. Decisions needed before phase 2
 
 1. **Is local mode the same repository, or a separate distribution?** This
    brief assumes one repo and one flag. A separate package is easier to make
    pleasant and much harder to keep working.
+
+   > **Answered: one repo, one flag.** Taken as the brief proposed, and one
+   > thing that was not obvious beforehand now argues strongly for it: the
+   > safety of local mode is a *property of the shared gate*. `pnpm
+   > verify:share` runs its entire suite with `MORGUE_LOCAL=1` set, so all 33
+   > assertions are simultaneously a proof that the flag is inert on a
+   > configured deployment. A separate distribution could not have that
+   > property at all — there would be no shared gate to prove anything about.
+
 2. **Does local mode keep the capture pipeline, or only browse?** Capture is
    what makes morgue morgue, and it is also the entire ffmpeg/Playwright
    burden. A browse-only local mode installs in seconds. A capturing one is the
    real tool. Possible answer: install browse-only, offer capture as a second,
    clearly-priced step.
+
+   > **Answered: exactly that.** `pnpm doctor` reports two tiers and only fails
+   > on the browse tier; `--capture` promotes the second one to fatal. The
+   > installers ask before downloading the 400 MB, and `pnpm morgue` builds and
+   > serves without ffmpeg, rendering "not captured" on each card rather than
+   > refusing to start. Measurement made the split easy to argue: the entire
+   > account-and-cloud stack is 34 MB, Chrome alone is 387 MB.
+
 3. **What licence?** It decides whether §7's fixtures can ship and what anyone
    may do with the pipeline. Nothing else in phase 5 can be written until this
    is answered.
+
+   > **Still open, and now the only thing blocking publication.** The root
+   > `LICENSE` (added 2026-08-09) grants MIT over `fixtures/` and nothing else;
+   > its scope section leaves `bin/` and `web/` all-rights-reserved *pending
+   > this document*. So §7 is settled — the example set can ship — and the
+   > pipeline is not. Everything in phases 1–5 is built and works; publishing
+   > it needs one decision that is not a technical one.
+   >
+   > `pnpm test` now refuses to run if any fixture's licence is not `own` or
+   > `mit` (`bin/fixtures-build.mjs`), which is what turns §7's observation into
+   > an enforced invariant rather than a note.
+
+## 10. What this brief got wrong
+
+Recorded because the brief was written to be picked up cold by someone who
+would otherwise trust it.
+
+- **§3's premise.** "Production bloat" was assumed to be worth removing. It is
+  5.5% of the install and 0% of the browser bundle. The dynamic-import surgery
+  was not done and should not be done.
+- **§5's rule.** *"`MORGUE_LOCAL` must be ignored when `NODE_ENV=production`"*
+  is wrong and would have broken the feature. `pnpm morgue` runs a **production
+  build** — that is the only mode where `proxy.ts` behaves the way it does in
+  the deployment being protected. Keying on `NODE_ENV` would switch local mode
+  off in exactly the configuration it ships in. The implemented rule is
+  "ignored wherever anything says this deployment has accounts", which is a
+  disjunction over `VERCEL`, `AUTH_SECRET`, `DATABASE_URL` and the OAuth ids —
+  broader than `authConfigured()`, and deliberately sharing no code with it.
+- **§6's first bullet, partly.** *"Nothing imports the S3, Neon or Resend
+  clients"* is a claim about a module graph and an HTTP probe cannot see it.
+  `pnpm verify:local` asserts the observable consequence instead — every local
+  route answers without a 500, which is what an eagerly constructed cloud client
+  on an unconfigured machine would produce — and says so in its header rather
+  than implying more coverage than it has.

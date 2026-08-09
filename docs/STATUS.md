@@ -295,6 +295,54 @@ because `notifyUpgradeRequest` swallows its failures — with `RESEND_API_KEY`
 unset the request is still recorded and `/admin` says in as many words that
 nobody was emailed. An empty inbox is not evidence that nobody asked.
 
+## It runs locally now, with no accounts and no cloud — 2026-08-09
+
+`docs/LOCAL-MODE.md` was a design brief with nothing behind it. It now has
+`pnpm doctor`, `pnpm morgue`, `MORGUE_LOCAL=1`, `pnpm verify:local` (26/26),
+`SETUP.md`, `install.sh`, `install.ps1` and `CONTRIBUTING.md`. Phase 3's cold-VM
+test is the one gate not run, and `install.ps1` has never been executed — not
+even parsed — because no Windows or PowerShell was available here. Say that
+plainly rather than counting it done.
+
+`MORGUE_LOCAL=1` opens the vault and makes `/admin`, `/account`, `/upgrade`,
+`/signin`, `/reset`, `/verify`, `/s/*`, `/api/share`, `/api/account/*` and
+`/api/waitlist` return **404 rather than a gate**. It is ignored wherever
+anything says the deployment has accounts, and `pnpm verify:share` now runs its
+whole suite with the flag set — so all 33 of those assertions double as proof
+it is inert. See DECISIONS.md.
+
+**Building it found three live bugs, none of which any existing gate could see.**
+
+1. **`pnpm build` crashed on any item that had never been captured.**
+   `bin/build.mjs` copied `out/<slug>/` unconditionally, so a collection with no
+   media died on ENOENT. That is the default state of a fresh clone and of every
+   machine without a working ffmpeg — i.e. the entire audience for this mode.
+2. **`pnpm verify:share` could only pass on one laptop.** Its assertions were
+   scoped to two slugs from the private collection; anywhere else, four of them
+   404'd and it exited 1. It now derives slugs from whichever tree is built.
+3. **`pnpm verify:web` was worse — it crashed.** With no built site the grid was
+   empty, so it reported four failures and then timed out hovering a card that
+   did not exist.
+
+All three are the same shape: *the tool assumed a collection was present*, and
+the assumption held only on the machine that had one. Both suites also stopped
+confusing "the gate refused me" with "the file was never captured" — the media
+checks now report `404 — nothing captured here`, and `verify:web` reports three
+video assertions as **not run**, named again in its summary, rather than failed
+or silently dropped.
+
+**On this machine (Fedora, no collection, `ffmpeg-free` with no libx264):**
+`verify:local` 26/26, `verify:share` 33/33, `verify:auth` 128/128,
+`verify:web` 7/7 with 3 not run, `fixtures:check` 11/11.
+`pnpm test` still stops at capture, which is the libx264 gap and not a
+regression — `pnpm doctor` names it in one sentence with the command that fixes
+it.
+
+**What is still open:** the licence. `LICENSE` grants MIT over `fixtures/` and
+leaves `bin/` and `web/` all-rights-reserved *pending this decision*. Everything
+described above is built and gated; publishing it needs an answer that is not a
+technical one. LOCAL-MODE.md §9.3.
+
 ## In production
 
 **Live at https://morgue.clupai.com since 2026-08-09.** The section this
