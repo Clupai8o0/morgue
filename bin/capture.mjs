@@ -335,14 +335,45 @@ async function motionCheck(frameDir) {
   return { moved: hashes.size > 1, distinct: hashes.size, probed: probes.length }
 }
 
-const slugs = process.argv.slice(2)
+// A 24-tile sheet across the whole capture, written next to the mp4.
+//
+// Rule 5 mandates looking at the result, and FINDINGS credits contact sheets with catching
+// the only two bugs of that class ever found — a frozen scroll-timeline and a static page
+// moving under a moving scroll position, neither visible in `motion: OK`. Until now the
+// pipeline emitted no sheet and every ingest hand-rolled this same ffmpeg incantation.
+// Producing it here is also what makes pruning the frames safe: the artefact you are
+// supposed to look at outlives the 40MB of PNG it came from.
+async function contactSheet(frameDir, outDir, frames) {
+  const every = Math.max(1, Math.ceil(frames / 24))
+  const out = path.join(outDir, 'contact.jpg')
+  try {
+    await run('ffmpeg', ['-y', '-i', path.join(frameDir, '%05d.png'),
+      '-vf', `select='not(mod(n\\,${every}))',scale=240:-2,tile=6x4`,
+      '-frames:v', '1', '-q:v', '4', out])
+    return out
+  } catch { return null }
+}
+
+// Frames are INTERMEDIATE. 24 frame directories were holding 862MB of the 892MB in out/ —
+// 97% — because they were only ever removed at the head of the *next* run of that slug, so
+// a captured-once item kept them forever. Everything downstream (encode, motionCheck, the
+// contact sheet) has already run by the time we drop them, and `pnpm capture <slug>`
+// regenerates them in seconds. --keep-frames when you want to re-encode without recapturing.
+const KEEP_FRAMES = process.argv.includes('--keep-frames')
+const slugs = process.argv.slice(2).filter((a) => !a.startsWith('--'))
 const failures = []
 for (const slug of slugs.length ? slugs : await readdir(path.join(ROOT, SRC))) {
   process.stdout.write(`\n▸ ${slug}\n`)
   const r = await capture(slug)
   process.stdout.write(`  frames: ${r.frames} in ${r.ms}ms (${Math.round(r.ms / r.frames)}ms/frame)\n`)
   await capture(slug, { scale: 2, only: 'poster' })
-  const boom = r.cfg.trigger === 'scroll'
+  // Boomerang defaults on for scroll items — a scroll capture ends wherever the page
+  // stopped, and cutting straight back to the top is a visible snap in a looping grid tile.
+  // But it DOUBLES the frame count, and it is wrong whenever the animation already returns
+  // to its start state: starfield-animation is a 16KB source whose preview was the largest
+  // in the collection at 3.0MB, a third of it a mirrored tail nobody needed. Opt out with
+  // `"boomerang": false` in capture.json; opt in on a non-scroll item with `true`.
+  const boom = r.cfg.boomerang ?? (r.cfg.trigger === 'scroll')
   const enc = await encode(slug, r.cfg, r.outDir, r.frameDir, { boomerang: boom })
   process.stdout.write(
     `  mp4: ${await kb(enc.mp4)}KB  poster.webp: ${await kb(enc.posterWebp)}KB  poster.avif: ${await kb(enc.posterAvif)}KB` +
@@ -352,8 +383,13 @@ for (const slug of slugs.length ? slugs : await readdir(path.join(ROOT, SRC))) {
   process.stdout.write(`  motion: ${health.moved ? 'OK' : 'DEAD — frames identical'} (${health.distinct}/${health.probed} distinct probes)\n`)
   if (r.errors.length) process.stdout.write(`  \x1b[31m⚠ page errors: ${[...new Set(r.errors)].slice(0, 3).join(' | ')}\x1b[0m\n`)
   if (!health.moved || r.errors.length) failures.push(slug)
+  const sheet = await contactSheet(r.frameDir, r.outDir, r.frames)
+  if (sheet) process.stdout.write(`  contact: ${await kb(sheet)}KB — look at this before calling it done (rule 5)\n`)
+
   await writeFile(path.join(r.outDir, 'capture.log.json'),
     JSON.stringify({ slug, frames: r.frames, ms: r.ms, errors: [...new Set(r.errors)], health }, null, 2))
+
+  if (!KEEP_FRAMES) await rm(r.frameDir, { recursive: true, force: true })
 }
 if (failures.length) {
   process.stdout.write(`\n\x1b[31mFAILED: ${failures.join(', ')}\x1b[0m\n`)

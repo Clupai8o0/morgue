@@ -2,7 +2,7 @@
 // Generates items.json + the static grid. No framework, no dev server, no build step
 // for the shell itself — it is one HTML file that reads one JSON file.
 
-import { readFile, writeFile, readdir, cp, mkdir, stat } from 'node:fs/promises'
+import { readFile, writeFile, readdir, cp, mkdir, stat, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,6 +30,16 @@ const RUNGS = ['xs', 'sm']
 // cleanup step is one somebody forgets to run.
 const JUNK = new Set(['.DS_Store', 'Thumbs.db', '.Spotlight-V100', '.Trashes', '__MACOSX'])
 const publishable = (src) => !JUNK.has(path.basename(src))
+
+/** Recursive byte count, for reporting what a prune actually reclaimed. */
+async function sizeOf(p) {
+  const s = await stat(p).catch(() => null)
+  if (!s) return 0
+  if (!s.isDirectory()) return s.size
+  let n = 0
+  for (const e of await readdir(p)) n += await sizeOf(path.join(p, e))
+  return n
+}
 
 const items = []
 for (const slug of slugs) {
@@ -313,6 +323,44 @@ await writeFile(
 // notes.md is the bulk of a record and nobody needs 500 of them to browse.
 for (const it of items) {
   await writeFile(path.join(DATA, 'items', `${it.slug}.json`), JSON.stringify(it))
+}
+
+// ─── Prune site/ to the index ───────────────────────────────────────────────
+//
+// build.mjs used to copy and never delete, which was the worst gap in the
+// pipeline for two reasons that are not about disk.
+//
+// 1. RETIRING AN ITEM DID NOT UNPUBLISH IT. bin/publish.mjs walks site/, not
+//    the index, so a deleted item's media stayed staged for upload to a bucket
+//    nothing would ever clean. When blunt-preloader was retired its media sat
+//    there until it was removed by hand — that is paid third-party source one
+//    `pnpm publish:r2` away from a bucket.
+// 2. `pnpm test` builds fixtures/ into this same site/, so every test run left
+//    11 fixture slugs behind. items/ had 12 slugs against 23 in site/item.
+//
+// Only slugs are pruned, and only in the three directories build.mjs owns.
+// Nothing else under site/ is touched: vendor/, three/ and lenis/ are written
+// by the VENDOR map, and site/archive/<name> is keyed by archive rather than
+// by slug and is cleaned by the archive loop above.
+{
+  const keep = new Set(items.map((i) => i.slug))
+  let pruned = 0
+  let bytes = 0
+  for (const dir of ['item', 'media', 'data/items']) {
+    const base = path.join(SITE, dir)
+    if (!existsSync(base)) continue
+    for (const e of await readdir(base, { withFileTypes: true })) {
+      const slug = e.isDirectory() ? e.name : e.name.replace(/\.json$/, '')
+      if (keep.has(slug)) continue
+      const target = path.join(base, e.name)
+      bytes += await sizeOf(target)
+      await rm(target, { recursive: true, force: true })
+      pruned++
+    }
+  }
+  if (pruned) {
+    console.log(`  pruned ${pruned} orphaned path(s) from site/ (${(bytes / 1048576).toFixed(1)}MB) — not in the index`)
+  }
 }
 
 console.log(`built ${items.length} items → site/`)

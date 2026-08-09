@@ -116,9 +116,32 @@ confident wrong one.
     { "at": 1.0, "x": 860, "y": 60  }
   ],
   "posterAt": 0.55,
-  "settleMs": 600
+  "settleMs": 600,
+  "boomerang": false          // default: true for trigger:scroll, false otherwise
 }
 ```
+
+**`boomerang` doubles the frame count**, so set it `false` whenever the animation
+already returns to its start state. It defaults on for `scroll` because a scroll capture
+ends wherever the page stopped and cutting back to the top is a visible snap in a looping
+grid tile — but it made `starfield-animation`, a 16 KB source, the largest preview in the
+collection at 3.0 MB. Turning it off took that to 1.1 MB with no visible change.
+
+### What a capture writes
+
+```
+out/<slug>/
+  preview.mp4       the archival record
+  poster.webp/avif  the grid card
+  contact.jpg       24 tiles across the whole capture — LOOK AT THIS (rule 5)
+  capture.log.json  frames, ms, page errors, motion probes
+```
+
+`frames/` is intermediate and is **deleted after encoding**. It used to survive until the
+next run of that slug, which meant 24 frame directories held 862 MB of the 892 MB in
+`out/` — 97%. `contact.jpg` exists so pruning them costs you nothing: the artefact rule 5
+asks you to look at outlives the PNGs it came from. Pass `--keep-frames` when you want to
+re-encode without recapturing.
 
 Set `window.__ready = true` in the item once it is ready to record. The harness pumps the
 faked clock while polling for it, so signalling from inside a `requestAnimationFrame` or a
