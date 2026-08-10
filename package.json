@@ -30,6 +30,7 @@
     "optimise": "node bin/optimise.mjs",
     "survey": "node bin/survey.mjs",
     "extract": "node bin/extract.mjs",
+    "archive:assets": "node bin/archive-assets.mjs",
     "icon": "python3 bin/icon.py",
     "user": "node bin/user.mjs",
     "verify:auth": "node bin/verify-auth.mjs",
