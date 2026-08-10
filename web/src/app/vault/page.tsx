@@ -44,12 +44,18 @@ export default async function VaultPage() {
               collision the build date had before it was moved. The corner has
               one owner and this is how you join it. Styled to match the Share
               pill because both are pinned over scrolling content and need the
-              same backdrop to stay legible. */}
+              same backdrop to stay legible.
+
+              "Account", not "account →": two pills sitting against each other
+              are read as one control, so the odd one out is whichever breaks
+              the pattern. The arrow was a leftover from when this was an inline
+              text link in the header — inside a pill it promises a direction
+              the pill does not have. */}
           <Link
             href="/account"
             className="border-hairline-soft hover:border-hairline bg-canvas/70 text-ink-muted hover:text-ink rounded-pill px-sm text-micro border py-[7px] backdrop-blur-[6px] transition-[color,border-color,transform] duration-[var(--duration-fast)] ease-[var(--ease-spring)] hover:scale-[1.04] active:scale-[0.97]"
           >
-            account
+            Account
           </Link>
         </ShareLink>
       ) : null}
