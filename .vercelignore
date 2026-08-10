@@ -1,0 +1,49 @@
+# What may be uploaded to a deploy. This file is a boundary, not a speed-up.
+#
+# bin/publish.mjs opens by saying the deploy "has nothing to leak, because it
+# never holds the collection in the first place" — items/ is gitignored, Vercel
+# builds from a tree that has never contained it, and everything the vault shows
+# arrives at runtime from R2. That is the whole security argument for the
+# architecture.
+#
+# It was not true of a CLI deploy. `vercel --prod` computed a 498MB upload from
+# a repo whose non-ignored content is 2.6MB: with no .vercelignore present the
+# CLI did not apply .gitignore, so the collection, the built site and the capture
+# media were all being packed up and sent. The upload then failed on its own
+# size, which is the only reason it was noticed — the deploys that succeeded
+# 19 hours earlier did the same thing and simply fit.
+#
+# So the rule that keeps the collection off the network is written down HERE,
+# where the CLI actually reads it, and not inferred from .gitignore.
+#
+# Keep the two in step. Anything added to .gitignore because it is third-party
+# source, capture media or built output belongs in this list too.
+
+# ── The collection. Paid third-party source; never leaves this machine ───────
+items/
+archives/
+
+# ── Generated media and built output, reproducible from source ───────────────
+out/
+site/
+site-fixtures/
+fixtures/**/_next/
+fixtures/**/.next/
+fixtures/**/bundle.js
+
+# ── Dependencies and build caches (also Vercel defaults; listed to be explicit)
+node_modules/
+.pnpm-store/
+.next/
+web/.next/
+web/out/
+
+# ── Local state and secrets ──────────────────────────────────────────────────
+.git/
+.vercel/
+.det/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
