@@ -218,6 +218,30 @@ React `useEffect` works.
     the originals are in `~/morgue-backups/2026-08-08/`. Numbered 11 to avoid colliding with
     the web rules below; it is an ingest rule, not a web one.
 
+    **"On the way into `site/`" is no longer something you remember to do.** `pnpm build`
+    recompresses every raster it copies, on every build, and `bin/image-encode.mjs` is the
+    one encoder both it and `pnpm optimise` use. As a step you had to invoke it happened
+    exactly twice in the collection's life, and `archives/` — 602 files, 205 MB, most of
+    the built tree — had never been touched at all.
+
+    It is unconditional because it cannot do any of the damage the rest of this rule is
+    about: **same filename, same format, same pixel dimensions, PNG lossless**. Each of
+    those is one failure mode designed out rather than guarded against — a rename 404s a
+    computed path, a resize breaks anything whose geometry is load-bearing (a sprite sheet,
+    an atlas), a format change breaks the MIME, and `palette: true` quantises a gradient or
+    a normal map to 256 colours. A file that would grow is left exactly as it was; an
+    animated WebP is refused, because flattening it to frame 1 makes the file smaller and
+    the animation disappear. Resizing and palette quantisation stay where they were: opt-in,
+    per-item, backed up, in `pnpm optimise`. `--no-optimise` exists for bisecting a
+    rendering bug, not for routine use.
+
+    `site/` is regenerable, which is what makes in-place free there. A build still never
+    writes to `items/`.
+
+    Run against `items/` a second time on 2026-08-10, across the whole 94-item collection:
+    143 files, 109.03 MB → 33.89 MB (−68.9 %), every one verified to decode at its expected
+    dimensions with its format kept. Originals in `~/morgue-backups/2026-08-10/`.
+
 ## Rules for web/
 
 6. **This is `src/proxy.ts`, not `middleware.ts`.** Next 16 renamed the

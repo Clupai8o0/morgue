@@ -35,9 +35,12 @@
 import sharp from 'sharp'
 import { readFile, writeFile, readdir, mkdir, stat, link, copyFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// The encoder, the format table, the width ladder and the cache key all live in
+// one file now, because bin/build.mjs re-encodes on the way into site/ on every
+// build and a second copy of this would drift (rule 3).
+import { RASTER, EXT_FOR, BUCKETS, bucket, md5, walk, createEncoder } from './image-encode.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // Absolute MORGUE_SRC is honoured so this can be pointed at a throwaway copy
@@ -74,38 +77,17 @@ const CACHE_DIR = path.resolve(ROOT, flags['cache-dir'] ?? path.join('out', '.op
 const USE_CACHE = flags['no-cache'] !== true
 const BUDGET_MB = flags.budget == null ? null : Number(flags.budget)
 
-const RASTER = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif'])
-const EXT_FOR = { jpeg: '.jpg', png: '.png', webp: '.webp', avif: '.avif' }
 // Text we know how to rewrite safely. Anything not in here is searched as raw
 // BYTES for references instead — a reference we can find but not edit has to
 // veto the rename, and silently missing it is exactly the 404 this guards.
 const REWRITABLE = new Set(['.html', '.htm', '.css', '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.json', '.txt', '.md', '.svg', '.webmanifest', '.xml'])
-// Snapping target widths to a ladder keeps output sizes from becoming a long
-// tail of one-offs, which is what makes the content-hash encode cache hit.
-const BUCKETS = [320, 480, 640, 768, 1024, 1280, 1600, 1920, 2560, 3200]
 
 const bytes = (n) =>
   n < 1024 ? `${n}B` : n < 1048576 ? `${(n / 1024).toFixed(1)}KB` : `${(n / 1048576).toFixed(2)}MB`
 const delta = (from, to) => (from === 0 ? '  0.0%' : `${(((to - from) / from) * 100).toFixed(1)}%`)
-const md5 = (b) => createHash('md5').update(b).digest('hex')
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 // ─── tree ────────────────────────────────────────────────────────────────────
-
-/** Every file under dir, as posix paths relative to it. */
-async function walk(dir, base = dir) {
-  const out = []
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      if (entry.name === 'node_modules' || entry.name === '.next') continue
-      out.push(...(await walk(full, base)))
-    } else if (entry.isFile()) {
-      out.push(path.relative(base, full).split(path.sep).join('/'))
-    }
-  }
-  return out
-}
 
 function allSlugs() {
   return readdir(SRC, { withFileTypes: true }).then((e) =>
@@ -116,10 +98,6 @@ function allSlugs() {
 }
 
 // ─── planning ────────────────────────────────────────────────────────────────
-
-function bucket(w) {
-  return BUCKETS.find((b) => b >= w) ?? w
-}
 
 /**
  * Per-file overrides, hand-written or produced by a probe run. Read-only: this
@@ -161,39 +139,13 @@ function planFor(rel, meta, plan) {
 
 // ─── encoding ────────────────────────────────────────────────────────────────
 
-const memo = new Map() // one run, 74 raster files, 33 unique encodes
-
-async function encode(buf, plan) {
-  const key = `${md5(buf)}-w${plan.width ?? 0}-q${plan.quality}-${plan.format}`
-  if (memo.has(key)) return memo.get(key)
-
-  const cached = path.join(CACHE_DIR, `${key}.bin`)
-  if (USE_CACHE && existsSync(cached)) {
-    const hit = await readFile(cached)
-    memo.set(key, hit)
-    return hit
-  }
-
-  // .rotate() with no argument bakes EXIF orientation into the pixels. Re-encoding
-  // drops the EXIF tag, so without this an orientation-tagged photo comes out
-  // rotated — visibly wrong, and invisible to any byte-count check.
-  let img = sharp(buf, { failOn: 'none' }).rotate()
-  if (plan.width) img = img.resize({ width: plan.width, withoutEnlargement: true })
-  if (plan.format === 'jpeg') img = img.jpeg({ quality: plan.quality, chromaSubsampling: '4:2:0', mozjpeg: true })
-  else if (plan.format === 'png') img = img.png({ compressionLevel: 9, effort: 10, palette: true, quality: plan.quality })
-  else if (plan.format === 'webp') img = img.webp({ quality: plan.quality, effort: 5 })
-  else if (plan.format === 'avif') img = img.avif({ quality: Math.min(plan.quality, 60), effort: 4 })
-  const out = await img.toBuffer()
-
-  memo.set(key, out)
-  // The cache is written only on a real run. A dry run promises to write
-  // nothing, and "nothing except a cache" is not nothing.
-  if (USE_CACHE && WRITE) {
-    await mkdir(CACHE_DIR, { recursive: true })
-    await writeFile(cached, out)
-  }
-  return out
-}
+// One run, 74 raster files, 33 unique encodes — hence the memo inside. The
+// cache is written only on a real run: a dry run promises to write nothing, and
+// "nothing except a cache" is not nothing.
+const { encode } = createEncoder({
+  cacheDir: USE_CACHE ? CACHE_DIR : null,
+  persist: WRITE,
+})
 
 // ─── reference scanning ──────────────────────────────────────────────────────
 

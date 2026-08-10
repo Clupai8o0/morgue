@@ -74,6 +74,14 @@ async function walk(dir, base = dir) {
   const out = []
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name)
+    // A dot-entry under out/ is never a slug and never content. out/.optimise-cache
+    // holds the encoder's content-addressed blobs (207MB once a build has run
+    // the recompress pass over archives/, and it grows with the tree); .DS_Store
+    // arrives with any template unzipped on a Mac. Both were being walked and then
+    // reported as "a slug not in the index", which is noise that reads like a
+    // finding — and the only thing standing between the cache and the bucket was
+    // that its directory name happens not to match an item.
+    if (entry.name.startsWith('.')) continue
     // frames/ is the raw PNG sequence — hundreds of megabytes per item, and
     // reproducible by re-running capture. It has no business in object storage.
     if (entry.isDirectory()) {
