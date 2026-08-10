@@ -204,17 +204,47 @@ ok('page is visible', life.visibility === 'visible', life.visibility)
 ok('rAF running', life.frames > 30, `${life.frames} frames/s`)
 
 // ── 2. Reveal entrance (shared IntersectionObserver) ───────────────────────
+//
+// This asserted `revealed === total`, and it passed for as long as the corpus
+// was eleven fixtures — a grid that fits in one viewport. Reveal fires on first
+// intersection and then unobserves itself (components/motion/reveal.tsx), so at
+// 94 items with a 24-card page the correct result is that the cards below the
+// fold have NOT revealed yet. The assertion read the observer working as the
+// observer broken, and it went red the moment the collection got real.
+//
+// Same lesson as the sign-in rewrite at the top of this file: a test that only
+// passes while something is small is not testing what it claims. So assert the
+// behaviour instead — something reveals on load, and scrolling reveals more.
+// That holds for a corpus of 11 and a corpus of 900.
 await page.waitForTimeout(1500)
-const reveal = await page.evaluate(() => {
-  const els = [...document.querySelectorAll('.reveal')]
-  return {
-    total: els.length,
-    revealed: els.filter((e) => e.hasAttribute('data-in')).length,
-    opacities: els.slice(0, 3).map((e) => getComputedStyle(e).opacity),
-  }
-})
-ok('reveal fired', reveal.revealed === reveal.total && reveal.total > 0,
+const readReveal = () =>
+  page.evaluate(() => {
+    const els = [...document.querySelectorAll('.reveal')]
+    return {
+      total: els.length,
+      revealed: els.filter((e) => e.hasAttribute('data-in')).length,
+      opacities: els.slice(0, 3).map((e) => getComputedStyle(e).opacity),
+    }
+  })
+
+const reveal = await readReveal()
+ok('reveal fired on load',
+  reveal.total > 0 && reveal.revealed > 0 && reveal.opacities.every((o) => o === '1'),
   `${reveal.revealed}/${reveal.total}, opacity ${reveal.opacities.join(',')}`)
+
+if (reveal.revealed >= reveal.total) {
+  // Nothing below the fold means there is nothing for the observer to prove.
+  // Skipped rather than passed: a silent pass here would be the old bug back.
+  skip('reveal follows the scroll', `the whole grid fits the viewport (${reveal.total} cards)`)
+} else {
+  await page.evaluate(() => window.scrollBy(0, window.innerHeight * 2))
+  await page.waitForTimeout(1200)
+  const after = await readReveal()
+  ok('reveal follows the scroll', after.revealed > reveal.revealed,
+    `${reveal.revealed} → ${after.revealed} of ${after.total}`)
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.waitForTimeout(600)
+}
 
 // ── 3. Video src assigned by the observer ──────────────────────────────────
 // Read off the built payload rather than the DOM: `hasVideo` is what
@@ -234,11 +264,29 @@ const srcs = await page.evaluate(() => {
 const NOTHING_CAPTURED =
   'no item in this corpus has a preview — run `pnpm capture` (needs ffmpeg with libx264)'
 
+// The cap the grid is designed around, read out of the source rather than
+// written down twice — rule 8 says the LRU is ported verbatim from
+// bin/grid.html, and a second copy of the number here would drift from it.
+const MAX_PLAYERS = Number(
+  /MAX_PLAYERS\s*=\s*(\d+)/.exec(
+    readFileSync(path.join(ROOT, 'web', 'src', 'lib', 'player-pool.ts'), 'utf8'),
+  )?.[1] ?? 12,
+)
+
 if (!captured) {
   skip('observer assigned video src', NOTHING_CAPTURED)
-} else {
+} else if (srcs.total <= MAX_PLAYERS) {
+  // Small corpus: every card can hold a player, so every one should have a src.
   ok('observer assigned video src', srcs.withSrc === srcs.total && srcs.total > 0,
     `${srcs.withSrc}/${srcs.total}`)
+} else {
+  // Large corpus: `withSrc === total` is the WRONG assertion and used to fail
+  // here at 12/24. Twelve is not a shortfall, it is MAX_PLAYERS — the LRU
+  // holding the line rule 8 exists to hold. Asserting "all" would demand the
+  // grid decode 24 videos at once, which is the bug the pool prevents.
+  ok('observer assigned video src, capped by the pool',
+    srcs.withSrc > 0 && srcs.withSrc <= MAX_PLAYERS,
+    `${srcs.withSrc}/${srcs.total} loaded, cap ${MAX_PLAYERS}`)
 }
 
 // ── 4. THE question: does hover actually play a video? ─────────────────────
