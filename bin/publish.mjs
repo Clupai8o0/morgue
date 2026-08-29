@@ -169,10 +169,15 @@ try {
 }
 
 const current = new Set(index.map((it) => it.slug))
+// A public item must also be CLASSIFIED. An unclassified card (blank surface/effect) is a
+// half-finished record, and the public landing page is the last place one should leak — the
+// build-time nag exists to catch these, and this is the gate that makes ignoring it cost
+// something. Private publishing is unaffected.
+const classified = (it) => it.surface != null && Array.isArray(it.effect) && it.effect.length > 0
 const allowed = PUBLIC
   ? new Set(
       index
-        .filter((it) => it.showcase === true && (it.license === 'own' || it.license === 'mit'))
+        .filter((it) => it.showcase === true && (it.license === 'own' || it.license === 'mit') && classified(it))
         .map((it) => it.slug),
     )
   : current
@@ -184,7 +189,14 @@ if (PUBLIC) {
   // obvious; it is not, and a slug missing from the public bucket for a licence
   // reason should be readable here rather than inferred from a 404 later.
   for (const it of refused) {
-    console.log(`  refused  ${it.slug.padEnd(24)} license "${it.license}"${it.showcase === true ? '' : ', not showcase'}`)
+    const why = it.showcase !== true
+      ? 'not showcase'
+      : !(it.license === 'own' || it.license === 'mit')
+        ? `license "${it.license}"`
+        : !classified(it)
+          ? 'unclassified (blank surface/effect)'
+          : 'refused'
+    console.log(`  refused  ${it.slug.padEnd(24)} ${why}`)
   }
   if (allowed.size === 0) {
     console.error('\nNothing is publishable to the public bucket. Nothing was uploaded.')

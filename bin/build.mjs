@@ -60,11 +60,25 @@ async function sizeOf(p) {
 }
 
 const items = []
+// Classification backlog. ingest.mjs deliberately lands items with `surface` null and often
+// `effect` empty, and writes a stub notes.md — a blank gets filled in, a wrong tag gets
+// trusted (CLAUDE.md). Nothing ever reminded anyone, so the debt piled up and search quietly
+// rotted, which is the exact failure the controlled vocabulary exists to prevent. Surface it
+// on every build.
+const needsClassify = []
 for (const slug of slugs) {
   const dir = path.join(ROOT, SRC, slug)
   const outDir = path.join(ROOT, 'out', slug)
   const meta = JSON.parse(await readFile(path.join(dir, 'meta.json'), 'utf8'))
   const notes = existsSync(path.join(dir, 'notes.md')) ? await readFile(path.join(dir, 'notes.md'), 'utf8') : ''
+
+  {
+    const gaps = []
+    if (meta.surface == null) gaps.push('surface')
+    if (!Array.isArray(meta.effect) || meta.effect.length === 0) gaps.push('effect')
+    if (/TODO — read the source and describe the effect/.test(notes)) gaps.push('notes')
+    if (gaps.length) needsClassify.push({ slug, gaps })
+  }
 
   // Publish media + the runnable item side by side.
   //
@@ -469,6 +483,11 @@ for (const it of items) {
 // confusion the two separate trees exist to remove.
 console.log(`built ${items.length} items → ${path.relative(ROOT, SITE)}/`)
 console.log(`  data: facets.json (${(JSON.stringify(facets).length / 1024).toFixed(1)}KB) + ${items.length} records`)
+
+if (needsClassify.length) {
+  console.log(`\n  ⚠ ${needsClassify.length} item(s) still need classifying — fill them in with \`pnpm classify <slug>\`:`)
+  for (const { slug, gaps } of needsClassify) console.log(`      ${slug.padEnd(28)} needs ${gaps.join(', ')}`)
+}
 
 // ─── Showcase media for the PUBLIC landing page ────────────────────────────
 // The one place this build writes into tracked files, and it needs the reason

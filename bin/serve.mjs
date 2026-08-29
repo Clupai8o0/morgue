@@ -14,7 +14,8 @@ const PORT = Number(process.env.PORT || 8910)
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.css': 'text/css', '.json': 'application/json', '.txt': 'text/plain',
-  '.mp4': 'video/mp4', '.webm': 'video/webm', '.webp': 'image/webp',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime', '.webm': 'video/webm', '.webp': 'image/webp',
   '.avif': 'image/avif', '.png': 'image/png', '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.glb': 'model/gltf-binary',
 }

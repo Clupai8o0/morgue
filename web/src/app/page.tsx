@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { authConfigured } from "@/auth";
 import { Magnetic } from "@/components/motion/magnetic";
 import { Reveal } from "@/components/motion/reveal";
+import { SiteHeader } from "@/components/site-header";
+import { VaultSpecimen } from "@/components/vault-specimen";
 import { WaitlistForm } from "@/components/waitlist-form";
 import { ceilings, determinism, encoders } from "@/lib/findings";
 import { showcaseItems } from "@/lib/showcase";
@@ -64,47 +67,56 @@ export default function Home() {
   const ceiling = ceilings();
   const det = determinism();
   const showcase = showcaseItems();
+  const canSignIn = authConfigured();
 
   return (
-    <main className="mx-auto w-full max-w-[1100px] px-lg">
+    <>
+      <SiteHeader canSignIn={canSignIn} />
+      <main className="mx-auto w-full max-w-[1100px] px-lg">
       {/* ── Hero ─────────────────────────────────────────────────────── */}
-      <section className="py-section">
-        <p className="text-caption text-accent mb-md uppercase tracking-[0.14em]">
-          morgue
-        </p>
-        <h1 className="text-display-xxl font-display max-w-[13ch]">
-          A drawer of clippings for motion on the web.
-        </h1>
-        <p className="text-body-lg text-ink-muted mt-xl max-w-[56ch]">
-          Hand it a component. It captures a deterministic video preview, files
-          it under a controlled vocabulary, and writes down how the effect
-          actually works. Later you search for{" "}
-          <span className="text-ink">
-            &ldquo;the one where the panels pin and scroll sideways&rdquo;
-          </span>{" "}
-          and get the clip, the code, and the note.
-        </p>
+      <section className="py-section gap-xxl grid items-center lg:grid-cols-[1.05fr_0.95fr]">
+        <div>
+          <p className="text-caption text-accent mb-md uppercase tracking-[0.14em]">
+            Private reference vault
+          </p>
+          <h1 className="text-display-xl font-display max-w-[14ch]">
+            A drawer of clippings for motion on the web.
+          </h1>
+          <p className="text-body-lg text-ink-muted mt-xl max-w-[52ch]">
+            Hand it a component. It captures a deterministic video preview, files
+            it under a controlled vocabulary, and writes down how the effect
+            actually works. Later you search for{" "}
+            <span className="text-ink">
+              &ldquo;the one where the panels pin and scroll sideways&rdquo;
+            </span>{" "}
+            and get the clip, the code, and the note.
+          </p>
 
-        <div className="mt-xxl gap-sm flex flex-wrap items-center">
-          <Magnetic>
-            <Link
-              href="#access"
-              className="bg-primary text-on-primary rounded-pill text-button px-lg inline-block py-[12px]"
-            >
-              Request access
-            </Link>
-          </Magnetic>
-          <Magnetic>
-            <a
-              href="https://github.com/Clupai8o0/morgue"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-surface-1 text-ink rounded-pill text-button px-lg inline-block py-[12px]"
-            >
-              Source ↗
-            </a>
-          </Magnetic>
+          <div className="mt-xxl gap-sm flex flex-wrap items-center">
+            <Magnetic>
+              <Link
+                href="#access"
+                className="bg-primary text-on-primary rounded-pill text-button px-lg inline-block py-[12px]"
+              >
+                Request access
+              </Link>
+            </Magnetic>
+            {canSignIn ? (
+              <Magnetic>
+                <Link
+                  href="/signin"
+                  className="bg-surface-1 text-ink rounded-pill text-button px-lg inline-block py-[12px]"
+                >
+                  Sign in
+                </Link>
+              </Magnetic>
+            ) : null}
+          </div>
         </div>
+
+        <Reveal className="mt-md lg:mt-0">
+          <VaultSpecimen items={showcase} />
+        </Reveal>
       </section>
 
       {/* ── The ceiling that shapes everything ───────────────────────── */}
@@ -254,6 +266,72 @@ requestAnimationFrame = (cb) => queue.set(id++, cb)   // drains only when we ste
         </section>
       </Reveal>
 
+      {/* ── Built with its own parts ─────────────────────────────────────
+          The interaction components the vault itself runs, live and labelled —
+          all own/MIT, the same honesty rule as the showcase tiles below. ──── */}
+      <Reveal>
+        <section className="border-hairline-soft py-section border-t">
+          <p className="text-caption text-ink-muted mb-md uppercase tracking-[0.14em]">
+            Built with its own parts
+          </p>
+          <h2 className="text-display-lg font-display max-w-[18ch]">
+            The site runs on the components it files away.
+          </h2>
+          <p className="text-body-lg text-ink-muted mt-lg max-w-[58ch]">
+            Not a mockup of the vault — the actual pieces, wired up live. Each is
+            written from scratch and MIT-licensed, so it can be shown.
+          </p>
+
+          <div className="mt-xl gap-md grid sm:grid-cols-3">
+            {/* Magnetic — genuinely live */}
+            <div className="border-hairline bg-surface-1 rounded-xxl p-lg flex min-h-[220px] flex-col justify-between">
+              <div className="flex flex-1 items-center justify-center">
+                <Magnetic strength={0.6}>
+                  <span className="bg-primary text-on-primary rounded-pill text-button px-lg inline-block cursor-default py-[12px]">
+                    Pull me
+                  </span>
+                </Magnetic>
+              </div>
+              <div>
+                <div className="text-subhead font-display">Magnetic</div>
+                <p className="text-body-sm text-ink-muted mt-xs">
+                  gsap <code className="text-ink">quickTo</code> from
+                  fixtures/magnetic-cursor — the vault&apos;s filter chips use it.
+                </p>
+              </div>
+            </div>
+
+            {/* Spotlight — the tier/card surface */}
+            <div className="spotlight-violet rounded-xxl p-lg flex min-h-[220px] flex-col justify-between">
+              <div className="text-display-lg font-display flex flex-1 items-center">Aa</div>
+              <div>
+                <div className="text-subhead font-display">Spotlight</div>
+                <p className="text-body-sm mt-xs opacity-90">
+                  The gradient surface behind every tier card and the grid&apos;s
+                  hover states.
+                </p>
+              </div>
+            </div>
+
+            {/* Reveal — self-demonstrating */}
+            <Reveal index={1}>
+              <div className="border-hairline bg-surface-1 rounded-xxl p-lg flex min-h-[220px] flex-col justify-between">
+                <div className="text-display-md font-display text-ink-muted flex flex-1 items-center justify-center">
+                  ↑ lifted in
+                </div>
+                <div>
+                  <div className="text-subhead font-display">Reveal</div>
+                  <p className="text-body-sm text-ink-muted mt-xs">
+                    One shared IntersectionObserver fades every section up —
+                    including this card.
+                  </p>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </section>
+      </Reveal>
+
       {/* ── Showcase ─────────────────────────────────────────────────────
           The tiles come from fixtures/ — every item whose meta.json carries
           `showcase: true`. Nothing is hardcoded here, including the count, so
@@ -320,6 +398,7 @@ requestAnimationFrame = (cb) => queue.set(id++, cb)   // drains only when we ste
         </span>
       </footer>
     </main>
+    </>
   );
 }
 
