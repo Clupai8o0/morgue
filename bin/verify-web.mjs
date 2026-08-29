@@ -201,7 +201,11 @@ const life = await page.evaluate(async () => {
   return { frames, visibility: document.visibilityState }
 })
 ok('page is visible', life.visibility === 'visible', life.visibility)
-ok('rAF running', life.frames > 30, `${life.frames} frames/s`)
+// A backgrounded page suspends rAF and reads 0 frames/s (see header); a live
+// one under a headless next start with 12 grid videos decoding samples well
+// below 60fps. The bar distinguishes running from suspended, not smooth from
+// janky — 10 is an order of magnitude above the 0 that a hidden tab yields.
+ok('rAF running', life.frames > 10, `${life.frames} frames/s`)
 
 // ── 2. Reveal entrance (shared IntersectionObserver) ───────────────────────
 //

@@ -129,9 +129,45 @@ confident wrong one.
   ],
   "posterAt": 0.55,
   "settleMs": 600,
-  "boomerang": false          // default: true for trigger:scroll, false otherwise
+  "boomerang": false,         // default: true for trigger:scroll, false otherwise
+
+  // ── Drivers that compose with any trigger ────────────────────────────────
+  "scrollTo": "50%",                                    // fixed offset; px or % of max
+  "wheel": { "deltaY": 4000, "steps": 80 },             // real WheelEvents
+  "drag":  { "path": [ /* like pointerPath */ ], "releaseAt": 0.95 },
+  "click": { "selector": ".btn", "at": 0.2, "real": true }
 }
 ```
+
+**`trigger` picks ONE driver; these four are additive and stack on top of it.** That
+distinction was learned the hard way. Before them the harness could move the pointer, seek
+the clock, scroll, and fire one synthetic `element.click()` — and roughly twenty items in
+the CodeGrid corpus could not be captured at all:
+
+- **`wheel`** — a whole family of sliders listens for `wheel` and sets `html, body {
+  overflow: hidden }`, so `scrollMax` is 0 and `trigger: "scroll"` writes position 0 a
+  hundred and fifty times. `window.scrollTo` is no substitute: a virtual-scroll library
+  reads deltas off the event, not off `scrollY`.
+- **`drag`** — presses at the first waypoint, moves, releases at `releaseAt`. GSAP
+  `Draggable`, OrbitControls, a canvas draw tool and a fluid sim reading `mouseIsPressed`
+  all start on `pointerdown`, and `pointerPath` never presses.
+- **`click.real`** — a real press at the element's centre. Plain `element.click()`
+  synthesises `clientX/clientY = 0`, which is fine for a toggle and wrong for anything
+  reading the coordinates: one slider branches on `e.clientX > innerWidth / 2` and so
+  always read "previous"; another spawns media at the cursor and put it at `left: -350px`.
+  Opt-in, because every existing item is tuned against the plain form.
+- **`scrollTo`** — because `trigger: "scroll"` owns the scroll position for the whole
+  timeline, an effect living in section two that also needs the pointer inside it had no
+  expressible capture: scroll never moves the mouse, pointer never scrolls.
+
+**One item may not take the batch down with it.** `page.evaluate` rethrows whatever the
+PAGE threw. A delivery with a temporal dead zone in a ScrollTrigger `onUpdate` unwound
+straight past `browser.close()` and `server.close()`, so Chromium stayed alive, the HTTP
+listener stayed bound, and node never exited — it did not fail, it HUNG, after writing one
+frame, with no error line. Across six shards that silently dropped 36 queued slugs. The
+frame loop is now inside `try/finally` and the per-item body inside `try/catch`: a broken
+delivery is DATA, not an error condition. This is third-party source and some of it does
+not run.
 
 **`boomerang` doubles the frame count**, so set it `false` whenever the animation
 already returns to its start state. It defaults on for `scroll` because a scroll capture
@@ -158,6 +194,41 @@ re-encode without recapturing.
 Set `window.__ready = true` in the item once it is ready to record. The harness pumps the
 faked clock while polling for it, so signalling from inside a `requestAnimationFrame` or a
 React `useEffect` works.
+
+## Ingesting a delivery that is already one component
+
+`pnpm extract` carves one candidate out of a large template that `pnpm survey` has mapped.
+`pnpm ingest` is the other shape — a delivery that IS one component, one folder, one
+`index.html`, where nothing needs carving and the problem is that it was written to run
+under a bundler, or off a CDN, or served from the folder root, and the vault serves none of
+those.
+
+```bash
+pnpm ingest <dir> --slug <slug> --source-archive <path> [--dry-run]
+node bin/ingest-batch.mjs <staging-dir> --manifest <file.json> --slug-overrides <file.json>
+```
+
+It does the deterministic part and only that: strips delivery junk, relativises
+root-absolute references to the item's own files, rewrites CDN tags and bare ESM imports
+onto the vendored copies, neutralises dead `<a href>`s, injects the readiness signal, and
+sizes `capture.json` to the timeline the source declares.
+
+**It leaves `effect` and `surface` empty rather than guessing**, and lists every item it
+could not classify. Those two tags are what make the vault searchable, they cannot be read
+off an AST, and a plausible guess is worse than a blank: a blank gets filled in, a wrong tag
+gets trusted.
+
+Two things it gets right that are easy to get wrong:
+
+- **Slug collisions are a hard stop, never a `-2` suffix.** Two deliveries wanting one slug
+  are usually the same component twice, and silently landing both is how a vault gets
+  duplicate cards nobody notices. `--slug-overrides` is where the judgement goes, with the
+  reasoning next to it — including `null` to skip a delivery that a later one supersedes.
+- **`durationMs` is read from the source, not defaulted.** A flat 3000ms was wrong far more
+  often than right: these deliveries open with eight- to fourteen-second scripted intros, a
+  three-second window recorded the first fifth, and `motion: OK` passed every time because
+  a preloader counting 000 to 081 is unambiguously moving. In one batch of twelve, five
+  previews were truncated that way and none was flagged.
 
 ## Rules that exist because something broke
 
@@ -196,6 +267,25 @@ React `useEffect` works.
 
 3. **New vendored libraries go in `bin/vendor.mjs`.** Capture and the site both read that map.
    Adding a copy to one and not the other is how the Three.js item 404'd only on its detail page.
+
+   The map now also carries `/three-addons/`, `/anime/`, `/matter/`, `/split-type/`,
+   `/locomotive/`, `/lottie/` and `/p5/`. **Pin the MAJOR to what the source calls, not to
+   what is newest.** anime 4 replaced the global `anime` with named ESM exports, locomotive
+   5 rewrote its API, and p5 2 removed `preload()`/`loadFont()` — vendoring the current
+   major leaves the page loading a file that cannot run it, with no error a byte count
+   would show. Three of the seven are deliberately behind latest for that reason.
+
+   **Never map anything to `/vendor/all.js`.** Measured against gsap 3.15.0: the `all`
+   bundle's SplitText returns two chars with empty `textContent` where the standalone plugin
+   returns ten — one empty div per word — so a chars-split headline renders as nothing,
+   `motion: OK` still passes, and `pnpm check` sees a page with no errors. It fails the same
+   way loaded alone or after `gsap.min.js`. Core plus the named plugins is the only safe
+   shape. (`SplitText.min.js` itself is fine; that was the first diagnosis and it was wrong.)
+
+   **An importmap needs the ESM build, a `<script src>` needs the UMD one.** `/lottie/` and
+   `/split-type/` mount directories that contain both; pointing an importmap at the UMD file
+   gives `does not provide an export named 'default'` and kills the module before its first
+   line — which reads as an item that simply does nothing.
 
 4. **Scroll-driven items get no in-page embed.** ScrollTrigger's scroller is the iframe's own
    viewport; in a short frame it shows frame 0 forever. Video in the grid, open-in-new-tab for

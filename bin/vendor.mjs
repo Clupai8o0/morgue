@@ -9,7 +9,25 @@
 export const VENDOR = {
   '/vendor/': 'node_modules/gsap/dist',
   '/three/': 'node_modules/three/build',
+  // OrbitControls and friends are not in three/build — they live in examples/jsm
+  // and are imported as "three/addons/…". Six components in the CodeGrid corpus
+  // died on exactly that specifier: the page loads, three resolves through the
+  // importmap, and the addon throws "Failed to resolve module specifier", which
+  // shows up as a still frame and `motion: DEAD` rather than as a missing file.
+  '/three-addons/': 'node_modules/three/examples/jsm',
   '/lenis/': 'node_modules/lenis/dist',
+  // ── Added for the CodeGrid component corpus ───────────────────────────────
+  // Each of these is a library the deliveries load from a CDN, which an item
+  // that has to run offline cannot do. The MAJOR is pinned to what the source
+  // actually calls, not to what is newest: anime 4 replaced the global `anime`
+  // with named ESM exports and locomotive 5 rewrote its API, so vendoring the
+  // current major would leave the page loading a file that cannot run it.
+  '/anime/': 'node_modules/animejs/lib',
+  '/matter/': 'node_modules/matter-js/build',
+  '/split-type/': 'node_modules/split-type/umd',
+  '/locomotive/': 'node_modules/locomotive-scroll/dist',
+  '/lottie/': 'node_modules/lottie-web/build/player',
+  '/p5/': 'node_modules/p5/lib',
   // Not a library. `archives/<name>/` is a whole ingested third-party template —
   // source, package.json, node_modules, build cache — of which only the built
   // export is servable. resolveVendor() splices that in; see below.

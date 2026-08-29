@@ -18,6 +18,13 @@ items/*
 archives/*
 !archives/.gitkeep
 
+# Ingest working-state: the manifests, dedup ledgers and batch lists `pnpm
+# ingest`/`ingest-batch` write while carving a delivery drop into items/. It
+# names the paid deliveries by folder and zip and records the local
+# `~/Downloads/…` paths they were extracted from — collection metadata, not
+# tool. The scripts that produce it are tracked; the output is yours alone.
+.ingest/
+
 # Generated media and built output — reproducible from source via `pnpm capture`.
 out/
 site/

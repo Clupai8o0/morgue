@@ -27,6 +27,7 @@ const MIME = {
   '.json': 'application/json', '.txt': 'text/plain', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
   '.avif': 'image/avif', '.woff': 'font/woff', '.woff2': 'font/woff2', '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
 }
 
 // A Next static export emits `about.html`, but `<Link href="/about">` navigates to the
@@ -154,7 +155,51 @@ async function drivePage(page, cfg, t, tSec, scrollMax, state = {}) {
   // That is the intended failure: loud beats plausible.
   if (cfg.click && !state.clicked && t >= (cfg.click.at ?? 0.1)) {
     state.clicked = true
-    await page.evaluate((sel) => document.querySelector(sel)?.click(), cfg.click.selector)
+    if (cfg.click.real) {
+      // A REAL press at the element's centre. `element.click()` synthesises an
+      // event with clientX/clientY = 0, which is fine for a toggle and wrong for
+      // anything that reads the coordinates: one slider branches on
+      // `e.clientX > innerWidth / 2` and so always read "previous"; another
+      // spawns media at the cursor and put it at left:-350px. Opt-in, because
+      // the plain form is what every existing item is tuned against.
+      const box = await page.evaluate((sel) => {
+        const el = document.querySelector(sel)
+        if (!el) return null
+        const r = el.getBoundingClientRect()
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+      }, cfg.click.selector)
+      if (box) { await page.mouse.move(box.x, box.y); await page.mouse.down(); await page.mouse.up() }
+    } else {
+      await page.evaluate((sel) => document.querySelector(sel)?.click(), cfg.click.selector)
+    }
+  }
+
+  // ── wheel ──────────────────────────────────────────────────────────────────
+  // A whole family of sliders listens for `wheel` and nothing else, and sets
+  // `html, body { overflow: hidden }` so scrollMax is 0 — meaning `trigger:
+  // "scroll"` moves nothing and `pointer` never presses. Eleven items in the
+  // CodeGrid corpus were uncapturable for exactly this reason, and every one
+  // recorded a still frame while `motion: OK` passed on some unrelated idle
+  // animation. `window.scrollTo` cannot substitute: a virtual-scroll library
+  // reads deltas off the event, not off scrollY.
+  if (cfg.wheel) {
+    const total = cfg.wheel.deltaY ?? 3000
+    const steps = cfg.wheel.steps ?? 60
+    const per = total / steps
+    const due = Math.floor(t * steps)
+    state.wheeled = state.wheeled ?? 0
+    while (state.wheeled < due) { await page.mouse.wheel(cfg.wheel.deltaX ?? 0, per); state.wheeled++ }
+  }
+
+  // ── drag ───────────────────────────────────────────────────────────────────
+  // press at the first waypoint, move along the path, release at the last.
+  // GSAP Draggable, a canvas draw tool and a fluid sim reading `mouseIsPressed`
+  // all start on pointerdown and none of them could be recorded at all.
+  if (cfg.drag?.path?.length) {
+    const { x, y } = pointerAt(cfg.drag.path, t)
+    if (!state.dragging) { await page.mouse.move(x, y); await page.mouse.down(); state.dragging = true }
+    else await page.mouse.move(x, y)
+    if (t >= (cfg.drag.releaseAt ?? 1) && !state.released) { await page.mouse.up(); state.released = true }
   }
   if (cfg.trigger === 'scroll') {
     const to = cfg.scroll?.to === 'max' ? scrollMax : (cfg.scroll?.to ?? scrollMax)
@@ -172,7 +217,20 @@ async function drivePage(page, cfg, t, tSec, scrollMax, state = {}) {
     const { x, y } = pointerAt(cfg.pointerPath, t)
     await page.mouse.move(x, y)  // a real move, so CSS :hover applies; costs one round-trip
   }
-  await page.evaluate((s) => window.__seek(s), tSec)
+  // `scrollTo` is a FIXED offset, and it composes with every trigger — which
+  // `trigger: "scroll"` does not, because that one owns the scroll position for
+  // the whole timeline. An effect living in section two that also needs the
+  // pointer inside it had no expressible capture at all: scroll never moves the
+  // mouse, pointer never scrolls. Re-applied every frame rather than once,
+  // because a page that re-lays out after its fonts land will otherwise drift
+  // back to the top halfway through the take.
+  const fixedY = cfg.scrollTo == null
+    ? null
+    : (typeof cfg.scrollTo === 'string' && cfg.scrollTo.endsWith('%')
+        ? (parseFloat(cfg.scrollTo) / 100) * scrollMax
+        : cfg.scrollTo)
+  await page.evaluate(({ s, y }) => { if (y != null) window.scrollTo(0, y); window.__seek(s) },
+    { s: tSec, y: fixedY })
 }
 
 async function capture(slug, { scale = 1, only = null } = {}) {
@@ -211,67 +269,84 @@ async function capture(slug, { scale = 1, only = null } = {}) {
 
   // An archive-backed item is captured at its own route inside the shared template, so four
   // items over one archive are four different pages of one build.
-  const entry = meta.archive ? archiveEntry(meta.archive) : '/'
-  await page.goto(`http://127.0.0.1:${port}${entry}`, { waitUntil: 'load' })
-  // Two traps here, both caused by our own fake clock:
-  //  1. Playwright's waitForFunction polls on requestAnimationFrame by default — which we
-  //     replaced with a queue that only drains when we step it. The predicate would never
-  //     run, so every item burned the full timeout. Poll on a timer instead.
-  //  2. Framework code (Next/React) commonly signals readiness from inside a rAF callback,
-  //     which for the same reason never fires. So pump the clock while we wait.
-  //  3. THE OPTIONS OBJECT GOES THIRD. Playwright's signature is
-  //     `waitForFunction(pageFunction, arg, options)`. Passed second it becomes `arg`, and
-  //     both fixes above silently revert to the defaults they were written to replace —
-  //     30s instead of 8s, and polling:'raf', which the fake clock never drains, so the
-  //     predicate is evaluated exactly ONCE and never again. Measured: as-written 30006ms
-  //     for 1 evaluation; corrected 8003ms for 157. Items that set __ready synchronously
-  //     pass on that single poll, which is how this hid — but an item gating on
-  //     `document.fonts.ready` or `img.decode()` waited the full 30s, twice per capture,
-  //     and printed nothing.
-  const readyAt = Date.now()
-  const ready = await page
-    .waitForFunction(() => { window.__vaultClock.step(0); return window.__ready === true },
-      null, { timeout: 8000, polling: 50 })
-    .then(() => true, () => false)
-  const readyMs = Date.now() - readyAt
-  // Never fatal — a `reference` item legitimately has nothing to signal. But never silent
-  // again either: the old `.catch(() => {})` is why 30s stalls went unnoticed for months.
-  if (!ready) {
-    process.stdout.write(
-      `  \x1b[33m! window.__ready never set (waited ${readyMs}ms) — recording whatever state the page reached\x1b[0m\n`,
-    )
-  }
-  await page.waitForTimeout(cfg.settleMs ?? 300)
-  await page.evaluate(DETACH_CLOCKS)
-  // Some libraries finish layout inside a rAF; give them a few before frame 0.
-  await page.evaluate(() => { for (let i = 0; i < 5; i++) window.__vaultClock.step(0) })
-
-  const fps = cfg.fps ?? 30
-  const frames = Math.round((cfg.durationMs / 1000) * fps)
-  const scrollMax = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)
-  const t0 = Date.now()
-  // Carries "have we clicked yet" across frames. Per capture, so the poster pass replays the
-  // click at the same point in the timeline the video did.
-  const driveState = {}
-
-  if (only === 'poster') {
-    // Step THROUGH to the poster time rather than jumping. Scrub smoothing, elastic eases and
-    // inertia all depend on the frames before them; a single jump lands somewhere plausible
-    // but wrong, and it's wrong in a way that looks fine until you compare it to the video.
-    const target = cfg.posterAt ?? 0.5
-    const upto = Math.max(1, Math.round(frames * target))
-    for (let i = 0; i <= upto; i++) await drivePage(page, cfg, i / (frames - 1), i / fps, scrollMax, driveState)
-    await page.screenshot({ path: path.join(outDir, 'poster.png') })
-  } else {
-    for (let i = 0; i < frames; i++) {
-      const t = frames === 1 ? 0 : i / (frames - 1)
-      await drivePage(page, cfg, t, i / fps, scrollMax, driveState)
-      await page.screenshot({ path: path.join(frameDir, String(i).padStart(5, '0') + '.png') })
+  // ── The page may throw, and the process must still exit ────────────────────
+  //
+  // page.evaluate rethrows whatever the PAGE threw. One delivery had a temporal
+  // dead zone in a ScrollTrigger onUpdate; the throw unwound straight past
+  // browser.close() and server.close(), leaving Chromium alive and an HTTP
+  // listener bound, so node never exited. It did not fail — it HUNG, after
+  // writing exactly one frame, with no error line. A sharded run looked like it
+  // was still working for as long as anyone was willing to wait.
+  //
+  // finally, so a broken item costs one red line instead of the whole batch.
+  let frames = 0
+  let t0 = Date.now()
+  try {
+    const entry = meta.archive ? archiveEntry(meta.archive) : '/'
+    await page.goto(`http://127.0.0.1:${port}${entry}`, { waitUntil: 'load' })
+    // Two traps here, both caused by our own fake clock:
+    //  1. Playwright's waitForFunction polls on requestAnimationFrame by default — which we
+    //     replaced with a queue that only drains when we step it. The predicate would never
+    //     run, so every item burned the full timeout. Poll on a timer instead.
+    //  2. Framework code (Next/React) commonly signals readiness from inside a rAF callback,
+    //     which for the same reason never fires. So pump the clock while we wait.
+    //  3. THE OPTIONS OBJECT GOES THIRD. Playwright's signature is
+    //     `waitForFunction(pageFunction, arg, options)`. Passed second it becomes `arg`, and
+    //     both fixes above silently revert to the defaults they were written to replace —
+    //     30s instead of 8s, and polling:'raf', which the fake clock never drains, so the
+    //     predicate is evaluated exactly ONCE and never again. Measured: as-written 30006ms
+    //     for 1 evaluation; corrected 8003ms for 157. Items that set __ready synchronously
+    //     pass on that single poll, which is how this hid — but an item gating on
+    //     `document.fonts.ready` or `img.decode()` waited the full 30s, twice per capture,
+    //     and printed nothing.
+    const readyAt = Date.now()
+    const ready = await page
+      .waitForFunction(() => { window.__vaultClock.step(0); return window.__ready === true },
+        null, { timeout: 8000, polling: 50 })
+      .then(() => true, () => false)
+    const readyMs = Date.now() - readyAt
+    // Never fatal — a `reference` item legitimately has nothing to signal. But never silent
+    // again either: the old `.catch(() => {})` is why 30s stalls went unnoticed for months.
+    if (!ready) {
+      process.stdout.write(
+        `  \x1b[33m! window.__ready never set (waited ${readyMs}ms) — recording whatever state the page reached\x1b[0m\n`,
+      )
     }
-  }
+    await page.waitForTimeout(cfg.settleMs ?? 300)
+    await page.evaluate(DETACH_CLOCKS)
+    // Some libraries finish layout inside a rAF; give them a few before frame 0.
+    await page.evaluate(() => { for (let i = 0; i < 5; i++) window.__vaultClock.step(0) })
 
-  await browser.close()
-  server.close()
+    const fps = cfg.fps ?? 30
+    // Assigns the outer binding, so the caller still learns the frame count when
+    // the run completes — and sees 0 rather than a stale number when it does not.
+    frames = Math.round((cfg.durationMs / 1000) * fps)
+    const scrollMax = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)
+    t0 = Date.now()
+    // Carries "have we clicked yet" across frames. Per capture, so the poster pass replays the
+    // click at the same point in the timeline the video did.
+    const driveState = {}
+
+    if (only === 'poster') {
+      // Step THROUGH to the poster time rather than jumping. Scrub smoothing, elastic eases and
+      // inertia all depend on the frames before them; a single jump lands somewhere plausible
+      // but wrong, and it's wrong in a way that looks fine until you compare it to the video.
+      const target = cfg.posterAt ?? 0.5
+      const upto = Math.max(1, Math.round(frames * target))
+      for (let i = 0; i <= upto; i++) await drivePage(page, cfg, i / (frames - 1), i / fps, scrollMax, driveState)
+      await page.screenshot({ path: path.join(outDir, 'poster.png') })
+    } else {
+      for (let i = 0; i < frames; i++) {
+        const t = frames === 1 ? 0 : i / (frames - 1)
+        await drivePage(page, cfg, t, i / fps, scrollMax, driveState)
+        await page.screenshot({ path: path.join(frameDir, String(i).padStart(5, '0') + '.png') })
+      }
+    }
+
+  } finally {
+    await browser.close().catch(() => {})
+    server.close()
+  }
   return { frames, ms: Date.now() - t0, errors, cfg, outDir, frameDir }
 }
 
@@ -363,6 +438,33 @@ async function motionCheck(frameDir) {
   return { moved: hashes.size > 1, distinct: hashes.size, probed: probes.length }
 }
 
+// A capture that is still moving as fast at its LAST frame as it was in the middle never
+// finished — the clock ran out mid-animation. This is `motion: OK`'s blind spot: a preview
+// that films only the opening of an eight-second scripted intro is unambiguously moving, so
+// the distinct-probe check passes while the video is truncated. It sank 5 of 12 previews in
+// one batch with nothing flagged. Measure the tail motion against the middle motion; a
+// settled ending has tail << mid, a cut-off (or an endless loop) does not. A warning, not a
+// failure — a genuine loop trips it too, and only the eye (rule 5) tells those apart.
+async function tailCheck(frameDir) {
+  const files = (await readdir(frameDir)).filter((f) => f.endsWith('.png')).sort()
+  if (files.length < 10) return { checked: false }
+  // Downscaled greyscale mean-absolute-difference, so a one-pixel jitter does not read as
+  // motion the way an exact hash would — the whole reason motionCheck's approach is wrong here.
+  const diff = async (a, b) => {
+    const [ra, rb] = await Promise.all([
+      sharp(path.join(frameDir, a)).resize(160, 100, { fit: 'fill' }).greyscale().raw().toBuffer(),
+      sharp(path.join(frameDir, b)).resize(160, 100, { fit: 'fill' }).greyscale().raw().toBuffer(),
+    ])
+    let s = 0
+    for (let i = 0; i < ra.length; i++) s += Math.abs(ra[i] - rb[i])
+    return s / ra.length
+  }
+  const n = files.length
+  const tail = await diff(files[n - 1], files[Math.max(0, n - 1 - Math.round(n * 0.05))])
+  const mid = await diff(files[Math.round(n * 0.5)], files[Math.round(n * 0.45)])
+  return { checked: true, tail: +tail.toFixed(2), mid: +mid.toFixed(2), truncated: mid > 1 && tail > mid * 0.6 }
+}
+
 // A 24-tile sheet across the whole capture, written next to the mp4.
 //
 // Rule 5 mandates looking at the result, and FINDINGS credits contact sheets with catching
@@ -403,8 +505,21 @@ const all = (await readdir(path.join(ROOT, SRC), { withFileTypes: true }))
   .map((d) => d.name)
 
 const failures = []
+const crashed = []
 for (const slug of slugs.length ? slugs : all) {
   process.stdout.write(`\n▸ ${slug}\n`)
+  // ── One item may not take the batch down with it ──────────────────────────
+  //
+  // page.evaluate rethrows whatever the PAGE threw, so a delivery whose own
+  // script has a bug — `Cannot access 'scrollVelocity' before initialization`,
+  // thrown from a ScrollTrigger onUpdate during the seek — became an uncaught
+  // exception here and killed the process. Captured at 12 items that cost
+  // nothing; captured at 310 across six shards it silently dropped 36 queued
+  // slugs, and the only evidence was a short log.
+  //
+  // A broken item is DATA, not an error condition: this corpus is third-party
+  // source and some of it does not run. Record it, say so at the end, move on.
+  try {
   const r = await capture(slug)
   process.stdout.write(`  frames: ${r.frames} in ${r.ms}ms (${Math.round(r.ms / r.frames)}ms/frame)\n`)
   await capture(slug, { scale: 2, only: 'poster' })
@@ -422,15 +537,27 @@ for (const slug of slugs.length ? slugs : all) {
   )
   const health = await motionCheck(r.frameDir)
   process.stdout.write(`  motion: ${health.moved ? 'OK' : 'DEAD — frames identical'} (${health.distinct}/${health.probed} distinct probes)\n`)
+  const tail = await tailCheck(r.frameDir)
+  if (tail.truncated) process.stdout.write(`  \x1b[33m⚠ still moving at the final frame (tail ${tail.tail} vs mid ${tail.mid}) — the capture may be cut short, or this is a continuous loop; watch the video (rule 5)\x1b[0m\n`)
   if (r.errors.length) process.stdout.write(`  \x1b[31m⚠ page errors: ${[...new Set(r.errors)].slice(0, 3).join(' | ')}\x1b[0m\n`)
   if (!health.moved || r.errors.length) failures.push(slug)
   const sheet = await contactSheet(r.frameDir, r.outDir, r.frames)
   if (sheet) process.stdout.write(`  contact: ${await kb(sheet)}KB — look at this before calling it done (rule 5)\n`)
 
   await writeFile(path.join(r.outDir, 'capture.log.json'),
-    JSON.stringify({ slug, frames: r.frames, ms: r.ms, errors: [...new Set(r.errors)], health }, null, 2))
+    JSON.stringify({ slug, frames: r.frames, ms: r.ms, errors: [...new Set(r.errors)], health, tail }, null, 2))
 
   if (!KEEP_FRAMES) await rm(r.frameDir, { recursive: true, force: true })
+  } catch (e) {
+    const why = String(e?.message ?? e).split('\n')[0].slice(0, 160)
+    process.stdout.write(`  \x1b[31m✗ capture threw — skipped: ${why}\x1b[0m\n`)
+    crashed.push([slug, why])
+    failures.push(slug)
+  }
+}
+if (crashed.length) {
+  process.stdout.write(`\n\x1b[31m${crashed.length} item(s) threw and produced nothing:\x1b[0m\n`)
+  for (const [slug, why] of crashed) process.stdout.write(`  ${slug.padEnd(40)} ${why}\n`)
 }
 if (failures.length) {
   process.stdout.write(`\n\x1b[31mFAILED: ${failures.join(', ')}\x1b[0m\n`)

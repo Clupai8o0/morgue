@@ -7,7 +7,8 @@ const SRC=process.env.MORGUE_SRC||'items'
 // checks the tree it just built rather than the real vault. See the comment
 // there for why the two trees are separate.
 const SITE=process.cwd()+(SRC==='items'?'/site':'/site-fixtures')
-const MIME={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.mp4':'video/mp4','.webp':'image/webp','.avif':'image/avif','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.ico':'image/x-icon','.woff':'font/woff','.woff2':'font/woff2','.txt':'text/plain'}
+const MIME={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.mp4':'video/mp4',
+  '.mov': 'video/quicktime','.webp':'image/webp','.avif':'image/avif','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.ico':'image/x-icon','.woff':'font/woff','.woff2':'font/woff2','.txt':'text/plain'}
 
 // A Next static export emits about.html, but <Link href="/about"> navigates to the
 // extension-less URL. A bare readFile 404s it, which would report every archive-backed
@@ -48,6 +49,18 @@ try{
 }
 records.sort((a,b)=>a.slug.localeCompare(b.slug))
 
+// `pnpm check <slug> [<slug>…]` verifies just those items instead of the whole built
+// collection. capture already takes a slug; re-running all ~94 pages in a browser to vouch
+// for the one you just added is the friction that gets this "not optional" gate skipped.
+const only=process.argv.slice(2).filter(a=>!a.startsWith('--'))
+const scoped=only.length>0
+if(scoped){
+  const missing=only.filter(s=>!records.some(r=>r.slug===s))
+  if(missing.length) console.warn(`  ! not in the index: ${missing.join(', ')} — run \`pnpm build\` if you just added it`)
+  const want=new Set(only)
+  records=records.filter(r=>want.has(r.slug))
+}
+
 for (const {slug,href} of records) {
   // 1280x800 matches capture.json's default viewport. It used to be 1000x700, which sits
   // below the 1200px desktop gate a real template uses and exactly ON a 1000px mobile
@@ -55,8 +68,14 @@ for (const {slug,href} of records) {
   // for, and could report green for a build in which none of the effects ran.
   const pg=await br.newPage({viewport:{width:1280,height:800}})
   const errs=[]
+  const phoned=new Set()
   pg.on('pageerror',e=>errs.push('JS:'+String(e).slice(0,50)))
   pg.on('response',r=>{ if(r.status()>=400) errs.push(r.status()+' '+r.url().replace(/^http:\/\/[^/]+/,'')) })
+  // Every item is meant to be fully local — capture and ingest vendor its libraries into the
+  // tree. A request to anywhere but the test server renders fine here (the real network
+  // answers) yet is silently broken on any offline clone, so a phone-home is a defect. This
+  // is where ingest's "remote asset left in place" note stops being a note and starts failing.
+  pg.on('request',rq=>{ const url=rq.url(); if(/^https?:\/\//.test(url) && !url.startsWith('http://127.0.0.1:8917')){ try{ phoned.add(new URL(url).host) }catch{ phoned.add(url.slice(0,40)) } } })
   await pg.goto(`http://127.0.0.1:8917${href}`,{waitUntil:'load'}).catch(e=>errs.push('GOTO'))
   await pg.waitForTimeout(1400)
   const ok = await pg.evaluate(()=>document.body && document.body.innerHTML.length>50).catch(()=>false)
@@ -99,6 +118,7 @@ for (const {slug,href} of records) {
   }
   // ─────────────────────────────────────────────────────────────────────────────
 
+  for(const host of phoned) errs.push(`PHONES-HOME ${host}`)
   const u=[...new Set(errs)]
   if(u.length) bad++
   console.log(`  ${slug.padEnd(20)} ${links.length?`[${links.length} link${links.length>1?'s':''}] `:''}${u.length?'FAIL  '+u.slice(0,3).join(' | '):'ok'}`)
@@ -120,7 +140,8 @@ if(!built){
   console.log('\nno build to check — run `pnpm build` first')
   process.exitCode=1
 }else if(!records.length){
-  console.log('\nno items in the index — nothing to check')
+  if(scoped){ console.log(`\nno matching item in the index for: ${only.join(', ')}`); process.exitCode=1 }
+  else console.log('\nno items in the index — nothing to check')
 }else{
   console.log(bad?`\n${bad} item page(s) broken in the built site`:'\nall item pages run')
   if(bad) process.exitCode=1
