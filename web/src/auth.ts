@@ -162,6 +162,15 @@ function providers(): Provider[] {
         // Harmless today (nothing calls Google's API on the user's behalf) and
         // left alone rather than papered over with prompt=consent, which makes
         // every sign-in an extra click for a token nothing reads.
+        //
+        // `prompt=select_account` is a DIFFERENT prompt and is deliberately on.
+        // Without it, Google reuses the browser's single signed-in account and
+        // never shows the chooser — so a visitor whose Google account was
+        // bounced to the waitlist could never sign in with a different one:
+        // every click re-submitted the rejected account. select_account forces
+        // the chooser without forcing consent, so it does not resurrect the
+        // refresh-token round trip the note above is about.
+        authorization: { params: { prompt: "select_account" } },
         profile(p) {
           return {
             id: p.sub,
