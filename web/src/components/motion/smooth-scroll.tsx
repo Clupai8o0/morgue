@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import Lenis from "lenis";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -25,9 +26,16 @@ gsap.registerPlugin(ScrollTrigger);
  * fabricates a large delta after a stall and makes scrub jump.
  */
 export function SmoothScroll() {
+  const pathname = usePathname();
+
   useEffect(() => {
     // A gallery of animation is exactly where this matters most, not least.
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    // Docs are long-form reading pages: smooth-scroll inertia reads as scroll
+    // jacking there, so they get native scrolling. Everywhere else keeps Lenis —
+    // the landing and vault animations ride the shared gsap.ticker loop below.
+    if (pathname === "/docs" || pathname?.startsWith("/docs/")) return;
 
     const lenis = new Lenis({ duration: 1.1 });
 
@@ -41,7 +49,7 @@ export function SmoothScroll() {
       gsap.ticker.remove(tick);
       lenis.destroy();
     };
-  }, []);
+  }, [pathname]);
 
   return null;
 }

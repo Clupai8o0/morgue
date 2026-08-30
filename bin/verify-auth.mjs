@@ -955,6 +955,99 @@ section('15 · caps and upgrade requests')
   check('and no share token hash either', !JSON.stringify(data).includes('tokenHash'))
 }
 
+// ── 16. MCP tokens are per-user bearer credentials ──────────────────────────
+// The MCP server (app/api/mcp) authenticates an agent with a per-user token
+// minted at /account, NOT a session cookie. So the token goes in an
+// Authorization header and these calls bypass get/json (which set a cookie).
+// The whole suite runs with AUTH_SESSION_RECHECK_SECONDS:'0', which is what
+// makes a suspension observable on the very next call — the same lever § 5 uses.
+section('16 · mcp tokens')
+{
+  const mcp = (token, msg) =>
+    fetch(`${BASE}/api/mcp`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(msg),
+    })
+  const INIT = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } }
+  const mintFor = async (session, name) => {
+    const r = await json('/api/account/mcp-tokens', 'POST', { name }, session)
+    return { status: r.status, body: await r.json().catch(() => ({})) }
+  }
+
+  const OWNER = 'mcp-owner@example.com'
+  const BANNED = 'mcp-suspended@example.com'
+  const BYSTANDER = 'mcp-bystander@example.com'
+  await seed(OWNER)
+  const bannedId = await seed(BANNED) // seeded active; suspended AFTER minting
+  await seed(BYSTANDER)
+
+  const ownerS = await signInWithPassword(OWNER, PW)
+
+  // Minting, and the shape of what comes back.
+  const mint = await mintFor(ownerS.session, 'laptop')
+  is('minting a token answers 200', mint.status, 200)
+  check('the token is returned once, with the greppable prefix', typeof mint.body.token === 'string' && mint.body.token.startsWith('morgue_mcp_'))
+  const ownerToken = mint.body.token
+
+  // (a) An active user's token is accepted, and the endpoint speaks MCP.
+  const good = await mcp(ownerToken, INIT)
+  is("an active user's token is accepted", good.status, 200)
+  const initBody = await good.json().catch(() => ({}))
+  is('and gets a real initialize result', initBody?.result?.serverInfo?.name, 'morgue')
+
+  // (b) No token is 401 — and crucially NOT a redirect to /signin, which is
+  //     what would happen if /api/mcp were ever added to proxy's PROTECTED list.
+  const anon = await mcp(null, INIT)
+  is('a request with no token is 401', anon.status, 401)
+  check('and it is a real refusal, not a sign-in redirect', !String(anon.headers.get('location') ?? '').includes('/signin'))
+
+  // (c)/(d) A garbage token and a wrong-format token are both refused.
+  is('a garbage bearer token is refused', (await mcp('morgue_mcp_totally-made-up', INIT)).status, 401)
+  is('a token without the prefix is refused', (await mcp('not-even-close', INIT)).status, 401)
+
+  // GET carries no server→client stream here, so it is 405.
+  is('GET is Method Not Allowed', (await fetch(`${BASE}/api/mcp`)).status, 405)
+
+  // Rule 13 bystander: a second account with its own live token, so a
+  // suspension or revocation that wrongly hit every row would be visible.
+  const bystanderS = await signInWithPassword(BYSTANDER, PW)
+  const bystanderToken = (await mintFor(bystanderS.session, 'bystander')).body.token
+  check('a bystander holds a working token', (await mcp(bystanderToken, INIT)).status === 200)
+
+  // (e) A suspended account's token is refused even though the token is valid —
+  //     admissionProblem re-checks the person, live, on every call.
+  const bannedS = await signInWithPassword(BANNED, PW)
+  const bannedToken = (await mintFor(bannedS.session, 'doomed')).body.token
+  check('the doomed token works while the account is active', (await mcp(bannedToken, INIT)).status === 200)
+  await sql.query(`update users set status = 'suspended' where id = $1`, [bannedId])
+  is("a suspended account's token is refused", (await mcp(bannedToken, INIT)).status, 401)
+  check('and the bystander is untouched by that suspension', (await mcp(bystanderToken, INIT)).status === 200)
+
+  // (f) Revocation is row-scoped: revoking one owner token must not disturb the
+  //     other, and a revoked token stops working.
+  const second = await mintFor(ownerS.session, 'desktop')
+  const secondToken = second.body.token
+  const list = await json('/api/account/mcp-tokens', 'GET', undefined, ownerS.session).then((r) => r.json())
+  is('the owner lists exactly their two live tokens', list.tokens.length, 2)
+  check('and none of them is the bystander\'s', !list.tokens.some((t) => t.name === 'bystander'))
+  const revokeId = list.tokens.find((t) => t.name === 'desktop').id
+  is('revoking answers 200', (await json('/api/account/mcp-tokens', 'DELETE', { id: revokeId }, ownerS.session)).status, 200)
+  is('the revoked token no longer authenticates', (await mcp(secondToken, INIT)).status, 401)
+  check('but the sibling token still does', (await mcp(ownerToken, INIT)).status === 200)
+
+  // (g) One account cannot revoke another's LIVE token: the id is real and
+  //     un-revoked, but it belongs to the owner, so a stranger changes nothing.
+  const laptopId = list.tokens.find((t) => t.name === 'laptop').id
+  const denied = await json('/api/account/mcp-tokens', 'DELETE', { id: laptopId }, bystanderS.session)
+  check('a stranger cannot revoke a token that is not theirs', denied.status === 409 || denied.status === 400)
+  is("and the owner's token still authenticates afterwards", (await mcp(ownerToken, INIT)).status, 200)
+}
+
 console.log(`\n${pass}/${pass + fail} passed\n`)
 cleanup()
 process.exit(fail ? 1 : 0)

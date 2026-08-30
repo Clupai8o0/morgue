@@ -300,6 +300,7 @@ console.log(
       '/api/account/export',
       '/api/account/sessions',
       '/api/account/upgrade',
+      '/api/account/mcp-tokens',
       '/upgrade',
     ]) {
       const res = await get(path, cookie)

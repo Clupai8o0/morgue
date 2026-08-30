@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { Inter } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { SmoothScroll } from "@/components/motion/smooth-scroll";
 // Not optional, and not cosmetic. The rule that matters is
 // `html.lenis, html.lenis body { height: auto }`.
@@ -51,6 +51,19 @@ const inter = Inter({
   display: "swap",
 });
 
+/**
+ * Mono face. Used only on the marketing landing — the brand wordmark, the code
+ * bundle, the small technical labels. Self-hosted by next/font at build so it
+ * adds no third-party request, and exposed as --font-jetbrains-mono for the one
+ * page (landing.css) that maps --font-mono onto it. Nothing else references it.
+ */
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: {
     default: "morgue",
@@ -82,7 +95,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${generalSans.variable} ${inter.variable} h-full antialiased`}
+      className={`${generalSans.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="bg-canvas text-ink min-h-full flex flex-col">
         <SmoothScroll />

@@ -68,6 +68,7 @@ const PROTECTED = [
   "/api/account/export",
   "/api/account/sessions",
   "/api/account/upgrade",
+  "/api/account/mcp-tokens",
 ];
 
 function isProtected(pathname: string): boolean {
@@ -200,7 +201,10 @@ export default function proxy(req: NextRequest, ctx: NextFetchEvent) {
     req.nextUrl.pathname.startsWith("/api/account/email") ||
     req.nextUrl.pathname.startsWith("/api/account/export") ||
     req.nextUrl.pathname.startsWith("/api/account/sessions") ||
-    req.nextUrl.pathname.startsWith("/api/account/upgrade");
+    req.nextUrl.pathname.startsWith("/api/account/upgrade") ||
+    // Minting a bearer key to the whole vault is the last thing a read-only
+    // share cookie should reach.
+    req.nextUrl.pathname.startsWith("/api/account/mcp-tokens");
 
   if (!ownerOnly) {
     const shared = shareGate(req);

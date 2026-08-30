@@ -374,6 +374,11 @@ const facets = items.map((it) => ({
   surface: it.surface,
   weight: it.weight,
   kind: it.kind,
+  // A filterable field, so it belongs on the row rather than only in the
+  // record — the MCP search tool and any future licence chip filter off this
+  // without reading 500 records. Always present (unlike the optional archive
+  // block); ~14 bytes against the ~130-byte budget above.
+  license: it.license,
   hasVideo: Boolean(it.video),
   // ~20 bytes a row against the ~130-byte budget, and it buys the grid the
   // right to ask for a 360px file instead of a 600px one. Omitted when empty
@@ -413,6 +418,7 @@ await writeFile(
       surface: vocab('surface'),
       weight: vocab('weight'),
       kind: vocab('kind'),
+      license: vocab('license'),
     },
   }),
 )

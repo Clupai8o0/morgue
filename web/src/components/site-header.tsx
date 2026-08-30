@@ -26,7 +26,13 @@ export function SiteHeader({ canSignIn }: { canSignIn: boolean }) {
           </span>
         </Link>
 
-        <nav className="gap-md flex items-center">
+        <nav aria-label="Primary" className="gap-md flex items-center">
+          <Link
+            href="/docs"
+            className="text-body-sm text-ink-muted hover:text-ink transition-colors duration-[var(--duration-fast)]"
+          >
+            Docs
+          </Link>
           <a
             href="https://github.com/Clupai8o0/morgue"
             target="_blank"

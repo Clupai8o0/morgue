@@ -76,6 +76,7 @@ export function AccountPanel({ available }: { available: string[] }) {
       <ProfileSection me={me} reload={load} />
       <SignInMethods me={me} available={available} reload={load} />
       <PasswordSection me={me} />
+      <McpTokensSection />
       <SessionsSection />
       <ExportSection />
       <DeleteSection me={me} />
@@ -272,6 +273,196 @@ function SessionsSection() {
           {state === "working" ? "…" : "Sign out everywhere"}
         </button>
       </div>
+      {problem ? (
+        <p role="alert" className="text-caption text-grad-coral mt-sm">
+          {problem}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * Per-user API tokens for the MCP server.
+ *
+ * The one place in this app that shows a secret. A minted token is returned
+ * once by the API and then only its hash is stored, so this section reveals it
+ * inline with a copy control and never claims to be able to show it again — the
+ * same "copy it now" contract the share-link minting UI uses. Listing and
+ * revoking follow the ordinary account-panel shape (fetch to the API route,
+ * reload the list), not share-admin's server actions.
+ */
+interface TokenView {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+function McpTokensSection() {
+  const [tokens, setTokens] = useState<TokenView[] | null>(null);
+  const [max, setMax] = useState(20);
+  const [name, setName] = useState("");
+  const [state, setState] = useState<"idle" | "creating">("idle");
+  const [problem, setProblem] = useState("");
+  const [minted, setMinted] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState("");
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/account/mcp-tokens");
+    if (res.ok) {
+      const body = await res.json();
+      setTokens(body.tokens ?? []);
+      setMax(body.max ?? 20);
+    } else {
+      setProblem("Could not load your tokens.");
+      setTokens([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const endpoint =
+    typeof window === "undefined" ? "/api/mcp" : `${window.location.origin}/api/mcp`;
+
+  async function create(e: React.FormEvent) {
+    e.preventDefault();
+    if (state === "creating" || !name.trim()) return;
+    setState("creating");
+    setProblem("");
+    setMinted(null);
+    setCopied(false);
+    const res = await fetch("/api/account/mcp-tokens", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setProblem(body.error ?? "Could not create a token.");
+      setState("idle");
+      return;
+    }
+    setMinted(body.token);
+    setName("");
+    setState("idle");
+    await load();
+  }
+
+  async function copy() {
+    if (!minted) return;
+    try {
+      await navigator.clipboard.writeText(minted);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    } catch {
+      setProblem("Clipboard refused — select the token and copy it by hand.");
+    }
+  }
+
+  async function revoke(id: string) {
+    if (busy) return;
+    setBusy(id);
+    setProblem("");
+    const res = await fetch("/api/account/mcp-tokens", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      setProblem((await res.json().catch(() => ({}))).error ?? "Could not revoke that.");
+    } else {
+      await load();
+    }
+    setBusy("");
+  }
+
+  const count = tokens?.length ?? 0;
+
+  return (
+    <section className={card}>
+      <p className="text-caption text-ink-muted uppercase tracking-[0.14em]">MCP access</p>
+      <p className="text-micro text-ink-muted mt-xs">
+        A token lets a coding agent search the vault and pull components through
+        the MCP server. Point your agent at{" "}
+        <code className="text-ink break-all">{endpoint}</code> and send the token
+        as <code className="text-ink">Authorization: Bearer …</code>.
+      </p>
+
+      {minted ? (
+        <div className="border-hairline-soft bg-canvas rounded-md p-sm mt-md border">
+          <p className="text-body-sm mb-xs">
+            Copy it now — it is shown once and never stored anywhere we can show
+            you again.
+          </p>
+          <div className="gap-xs flex items-center">
+            <code className="bg-surface-1 border-hairline-soft rounded-md px-sm text-micro min-w-0 flex-1 truncate border py-[8px]">
+              {minted}
+            </code>
+            <button onClick={copy} className={`${primary} shrink-0 px-md py-[8px]`}>
+              {copied ? "copied" : "copy"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <form onSubmit={create} className="gap-xs mt-md flex flex-col">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={80}
+          placeholder="Name this token — e.g. cursor on my laptop"
+          aria-label="Token name"
+          className={input}
+        />
+        <button
+          type="submit"
+          disabled={state === "creating" || !name.trim() || count >= max}
+          className={ghost}
+        >
+          {state === "creating" ? "Creating…" : "Create token"}
+        </button>
+      </form>
+
+      {tokens && tokens.length > 0 ? (
+        <ul className="border-hairline-soft mt-md space-y-xs pt-md border-t">
+          {tokens.map((t) => (
+            <li key={t.id} className="gap-sm flex items-center justify-between">
+              <span className="min-w-0">
+                <span className="text-body-sm block truncate">{t.name}</span>
+                <span className="text-micro text-ink-muted">
+                  {t.lastUsedAt
+                    ? `last used ${new Date(t.lastUsedAt).toLocaleDateString()}`
+                    : "never used"}
+                  {" · added "}
+                  {new Date(t.createdAt).toLocaleDateString()}
+                </span>
+              </span>
+              <button
+                onClick={() => revoke(t.id)}
+                disabled={busy === t.id}
+                className={`${ghost} shrink-0`}
+              >
+                {busy === t.id ? "…" : "Revoke"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-micro text-ink-muted mt-sm">
+          {tokens === null ? "Loading…" : "No tokens yet."}
+        </p>
+      )}
+
+      {count >= max ? (
+        <p className="text-micro text-ink-muted mt-sm">
+          You have the maximum of {max}. Revoke one to create another.
+        </p>
+      ) : null}
+
       {problem ? (
         <p role="alert" className="text-caption text-grad-coral mt-sm">
           {problem}

@@ -350,11 +350,18 @@ await page.goto(`${BASE}/`, { waitUntil: 'load' })
 await page.waitForTimeout(600)
 const pill = page.locator('a[href="#access"]').first()
 const box = await pill.boundingBox()
-const wrapper = await page.evaluateHandle((el) => el.parentElement, await pill.elementHandle())
-const before = await wrapper.evaluate((el) => getComputedStyle(el).transform)
-await page.mouse.move(box.x + box.width - 4, box.y + box.height - 4)
+// The landing's magnetic affordance applies its transform to the [data-mag]
+// element itself (the pill), not to a wrapper span. The old page wrapped the
+// CTA in the Magnetic component and the transform landed on the parent; read
+// the pill directly so the assertion follows the effect to where it now lives.
+const before = await pill.evaluate((el) => getComputedStyle(el).transform)
+// Aim for the pill BODY, off-centre, not the corner: the pill is a stadium
+// (border-radius: 100px), so its corners are outside the hit area and a
+// pointermove there falls through to .nav-right, never reaching the effect.
+// Off-centre so the displacement is genuinely non-zero (dead-centre is a no-op).
+await page.mouse.move(box.x + box.width * 0.72, box.y + box.height / 2)
 await page.waitForTimeout(500)
-const after = await wrapper.evaluate((el) => getComputedStyle(el).transform)
+const after = await pill.evaluate((el) => getComputedStyle(el).transform)
 ok('magnetic displaces on hover', before !== after, `${before} → ${after}`)
 
 // A poster that 404s is EXPECTED on an uncaptured corpus — the card renders a
