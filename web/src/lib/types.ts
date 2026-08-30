@@ -67,6 +67,14 @@ export interface Facet {
   surface: string;
   weight: Weight;
   kind: Kind;
+  /**
+   * The licence, carried on the row so it can be filtered without reading a
+   * record. OPTIONAL and permanently so, for the reason the whole interface
+   * repeats: facets.json is R2-resident and versions independently of this app,
+   * so a payload built before licence joined the row simply will not have it.
+   * `Item` redeclares this as required — a record always has it.
+   */
+  license?: License;
   hasVideo: boolean;
   /**
    * Rungs of the preview ladder that exist for this item, smallest first —
@@ -101,6 +109,8 @@ export interface VaultIndex {
     surface: string[];
     weight: string[];
     kind: string[];
+    /** Optional: older R2 payloads predate licence being in the vocabulary. */
+    license?: string[];
   };
 }
 

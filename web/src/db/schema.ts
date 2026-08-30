@@ -266,6 +266,53 @@ export const upgradeRequests = pgTable(
   (t) => [index("upgrade_requests_user_idx").on(t.userId, t.createdAt)],
 );
 
+/**
+ * Per-user API tokens for the MCP server.
+ *
+ * These authenticate a coding agent to ONE account over the hosted MCP
+ * transport (app/api/mcp) — the same "who may be here" decision src/auth.ts
+ * makes for a browser session, reached without a browser. A token is minted in
+ * /account, shown once, and carried as `Authorization: Bearer <token>`.
+ *
+ * ── Why a table and not a signed token ──────────────────────────────────────
+ *
+ * The same reasoning as lib/auth-tokens.ts over lib/share.ts: an agent's
+ * standing key to the whole vault must be REVOCABLE the instant it leaks, and
+ * single-use / revocation is a fact about the world you cannot sign into a
+ * bearer string. So the token is opaque random bytes, we store only its
+ * SHA-256 — a database dump is not replayable, exactly as `cli_tokens` and
+ * `share_links` — and revoking sets `revokedAt`, which the auth path reads on
+ * every call.
+ *
+ * ── Why userId, unlike cli_tokens ───────────────────────────────────────────
+ *
+ * `cli_tokens` is a deployment-wide key for `publish:r2` and belongs to no
+ * person. This one IS a person: it inherits their role, plan and suspension,
+ * re-checked live against the `users` row on every request (admissionProblem in
+ * lib/users.ts). The FK cascades, so a deleted account takes its tokens with it
+ * — the same contract `upgrade_requests` has and `share_links` deliberately
+ * does not.
+ */
+export const mcpTokens = pgTable(
+  "mcp_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // The user's own label — "cursor on my laptop". The point of a list is
+    // answering "what did I hand a key to" six weeks later.
+    name: text("name").notNull(),
+    // sha256 of the token. The plaintext is shown once at creation and never
+    // stored, so a database dump does not hand over vault access.
+    tokenHash: text("token_hash").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [index("mcp_tokens_user_idx").on(t.userId, t.createdAt)],
+);
+
 /* ─── Everything that was already here ──────────────────────────────────── */
 
 export const waitlist = pgTable(
@@ -362,3 +409,4 @@ export type Waitlist = typeof waitlist.$inferSelect;
 export type CliToken = typeof cliTokens.$inferSelect;
 export type ShareLink = typeof shareLinks.$inferSelect;
 export type UpgradeRequest = typeof upgradeRequests.$inferSelect;
+export type McpToken = typeof mcpTokens.$inferSelect;

@@ -102,6 +102,12 @@ const HOSTED_ONLY = [
   "/api/share",
   "/api/account",
   "/api/waitlist",
+  // The MCP transport authenticates a bearer token against an account row, and
+  // in local mode there are no accounts. A single-user local morgue serves the
+  // same three tools over stdio (`pnpm mcp`), which needs no token — so here
+  // this route is genuinely absent, not gated. (`/api/account/mcp-tokens` is
+  // already covered by the `/api/account` prefix above.)
+  "/api/mcp",
 ];
 
 export function hostedOnly(pathname: string): boolean {

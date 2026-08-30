@@ -36,6 +36,8 @@
     "archive:assets": "node bin/archive-assets.mjs",
     "icon": "python3 bin/icon.py",
     "user": "node bin/user.mjs",
+    "mcp": "node bin/mcp.mjs",
+    "verify:mcp": "node bin/verify-mcp.mjs",
     "verify:auth": "node bin/verify-auth.mjs",
     "db:generate": "pnpm --filter web db:generate",
     "db:migrate": "pnpm --filter web db:migrate"
